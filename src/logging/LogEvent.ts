@@ -7,6 +7,7 @@ import type { SessionPlatform, SessionStatus } from '../session/SessionGeneratio
 import type { AccountInfo } from '../rewards/types/RewardsState'
 import type { StreakProtectionState } from '../rewards/shared/parsers/RewardsPageParser'
 import type { PunchCardProgress } from '../rewards/shared/PunchCardProgress'
+import type { SearchDiagnostic } from './SearchDiagnostic'
 
 export interface StreakInfo {
     partner: string
@@ -23,6 +24,7 @@ export interface StreakInfo {
 }
 
 export type DomainEvent =
+    | SearchDiagnostic
     | ({ kind: 'activity'; activity: string; category?: CompletionCategory } & ActivityResult)
     | ({ kind: 'punchcard' } & PunchCardProgress)
     | {

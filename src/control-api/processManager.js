@@ -9,6 +9,7 @@ import { parseLogLine, severityRank } from './logs/parse.js'
 import { resolveLogColor } from '../logging/LogStyle.js'
 import { createRunState, summarizeRunState } from './logs/state.js'
 import { applyLogToRunState } from './logs/apply.js'
+import { createSearchDiagnosticLog } from './searchDiagnosticLog.js'
 import { sanitizeLogMessage, formatLogLine } from '../../scripts/lib/logging.cjs'
 import { ENV_OVERRIDES } from '../config/ConfigEnvOverrides.js'
 import { resolveSessionOptions, sessionPlatforms } from '../session/SessionGeneration.js'
@@ -66,6 +67,12 @@ export class ProcessManager extends EventEmitter {
         this.runState = createRunState()
         this.logBuffer = []
         this.logSeq = 0
+        this._writeSearchDiagnostic = createSearchDiagnosticLog(
+            path.join(cwd, 'diagnostics', 'search', 'events.jsonl'),
+            {
+                onWarning: message => this._controllerLog('warn', message)
+            }
+        )
         this.historyPath = path.join(cwd, 'config', 'run-history.json')
         this.history = loadRunHistory(this.historyPath, historySize, message => this._controllerLog('warn', message))
 
@@ -513,6 +520,7 @@ export class ProcessManager extends EventEmitter {
         entry.color = resolveLogColor(entry.level, entry.data, entry.color)
         entry.id = ++this.logSeq
         entry.receivedAt = new Date().toISOString()
+        this._writeSearchDiagnostic(entry)
         this.logBuffer.push(entry)
         if (this.logBuffer.length > this.logBufferSize) this.logBuffer.shift()
         this.emit('log', entry)

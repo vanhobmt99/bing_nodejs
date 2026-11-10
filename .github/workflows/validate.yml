@@ -38,5 +38,6 @@ jobs:
               run: |
                   npm run build
                   npm run check:api --if-present
+                  npm run test:monitoring --if-present
                   npm run lint --if-present
                   npm run format:check --if-present

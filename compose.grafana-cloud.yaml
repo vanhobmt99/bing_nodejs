@@ -1,0 +1,32 @@
+services:
+    microsoft-rewards-script:
+        environment:
+            API_MODE: 'true'
+            API_HOST: '0.0.0.0'
+            API_PORT: '3010'
+            API_TOKEN: '${API_TOKEN:?Set API_TOKEN in .env before starting monitoring}'
+
+    alloy:
+        image: grafana/alloy:v1.21.3
+        restart: unless-stopped
+        command:
+            - run
+            - --storage.path=/var/lib/alloy/data
+            - /etc/alloy/config.alloy
+        environment:
+            API_TOKEN: '${API_TOKEN:?Set API_TOKEN in .env before starting monitoring}'
+            GRAFANA_CLOUD_PROMETHEUS_URL: '${GRAFANA_CLOUD_PROMETHEUS_URL:?Set the Grafana Cloud Prometheus remote-write URL in .env}'
+            GRAFANA_CLOUD_PROMETHEUS_USERNAME: '${GRAFANA_CLOUD_PROMETHEUS_USERNAME:?Set the Grafana Cloud Prometheus username in .env}'
+            GRAFANA_CLOUD_METRICS_TOKEN: '${GRAFANA_CLOUD_METRICS_TOKEN:?Set a Grafana Cloud token with metrics:write scope in .env}'
+            GRAFANA_CLOUD_DEPLOYMENT: '${GRAFANA_CLOUD_DEPLOYMENT:-rewards}'
+        volumes:
+            - ./monitoring/alloy/config.alloy:/etc/alloy/config.alloy:ro
+            - alloy-data:/var/lib/alloy/data
+        depends_on:
+            microsoft-rewards-script:
+                condition: service_healthy
+        security_opt:
+            - no-new-privileges:true
+
+volumes:
+    alloy-data:

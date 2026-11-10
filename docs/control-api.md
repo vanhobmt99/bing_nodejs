@@ -12,6 +12,7 @@ The Control API manages one rewards run or session-generation job at a time. A d
 - [Run control](#run-control) and [login-session generation](#regenerate-sessions).
 - [Configuration](#configuration) and [scheduling](#scheduling).
 - [Dashboard data](#dashboard-data), [live events](#live-events) and [errors](#errors-and-limits).
+- [Grafana account monitoring](monitoring.md).
 
 > [!NOTE]
 > `rewardsMode=api` selects how reward tasks run. The Control API is a separate server and works with either rewards mode.
@@ -141,23 +142,24 @@ Run-control and regeneration requests return **202 Accepted**.
 
 ## Endpoints
 
-`GET /` lists all **28 method/path combinations**. JSON reads return 200 unless noted; `/events` streams SSE and diagnostic downloads return files.
+`GET /` lists all **29 method/path combinations**. JSON reads return 200 unless noted; `/metrics` returns Prometheus text, `/events` streams SSE and diagnostic downloads return files.
 
 ### Monitoring
 
-| Method | Path          | Returns                                                                    |
-| ------ | ------------- | -------------------------------------------------------------------------- |
-| GET    | `/`           | Version, auth requirement and endpoint list.                               |
-| GET    | `/health`     | Health, process state and uptime.                                          |
-| GET    | `/status`     | Process state, active/finished run and `lastExit`.                         |
-| GET    | `/plan`       | Effective execution plan and config warnings.                              |
-| GET    | `/points`     | Balances, verified/unknown gains and account details.                      |
-| GET    | `/logs`       | Retained logs and cursor metadata.                                         |
-| GET    | `/errors`     | Errors and, by default, warnings.                                          |
-| GET    | `/history`    | Persisted completed-run summaries.                                         |
-| GET    | `/accounts`   | Account slots, metadata and retained statistics.                           |
-| GET    | `/events`     | Live SSE status, logs and exit events.                                     |
-| POST   | `/docker-log` | Internal Docker wrapper log ingestion; returns 202 `{ "accepted": true }`. |
+| Method | Path          | Returns                                                                       |
+| ------ | ------------- | ----------------------------------------------------------------------------- |
+| GET    | `/`           | Version, auth requirement and endpoint list.                                  |
+| GET    | `/health`     | Health, process state and uptime.                                             |
+| GET    | `/status`     | Process state, active/finished run and `lastExit`.                            |
+| GET    | `/plan`       | Effective execution plan and config warnings.                                 |
+| GET    | `/points`     | Balances, verified/unknown gains and account details.                         |
+| GET    | `/metrics`    | Authenticated Prometheus account metrics; see [Grafana setup](monitoring.md). |
+| GET    | `/logs`       | Retained logs and cursor metadata.                                            |
+| GET    | `/errors`     | Errors and, by default, warnings.                                             |
+| GET    | `/history`    | Persisted completed-run summaries.                                            |
+| GET    | `/accounts`   | Account slots, metadata and retained statistics.                              |
+| GET    | `/events`     | Live SSE status, logs and exit events.                                        |
+| POST   | `/docker-log` | Internal Docker wrapper log ingestion; returns 202 `{ "accepted": true }`.    |
 
 | Read option                        | Default / behavior                                    |
 | ---------------------------------- | ----------------------------------------------------- |

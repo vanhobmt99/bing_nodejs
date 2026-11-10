@@ -4,6 +4,7 @@ import { isBrowserPageCrashed, isBrowserPageCrashError } from '../../../browser/
 import { URLs } from '../../../constants/urls'
 import { BaseActivity } from '../../shared/activities/BaseActivity'
 import { bingSearchBox, humanPreFocusPauseMs, humanType, submitSearch } from './HumanTyping'
+import { logSearchDiagnostic } from '../../../logging/SearchDiagnostic'
 
 const MAX_QUERY_ATTEMPTS = 5
 
@@ -33,6 +34,13 @@ export class BingSearchPage extends BaseActivity {
                 const crashed = isBrowserPageCrashed(page) || isBrowserPageCrashError(error)
                 const retry = attempt < maxAttempts && !page.isClosed() && (!crashed || Boolean(replaceCrashedPage))
                 const message = (error instanceof Error ? error.message : String(error)).split(/\r?\n/)[0]
+                logSearchDiagnostic(this.bot, isMobile, {
+                    stage: 'query',
+                    status: 'failed',
+                    reason: crashed ? 'search-tab-crashed' : 'submission-error',
+                    attempt,
+                    errorCode: error instanceof Error ? error.name : 'Error'
+                })
                 const recovery = crashed ? 'replacing crashed Bing tab' : 'reloading Bing'
                 this.bot.logger.warn(
                     isMobile,

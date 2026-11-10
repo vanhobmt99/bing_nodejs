@@ -1,0 +1,1429 @@
+{
+    "uid": "rewards-accounts",
+    "title": "Microsoft Rewards Accounts",
+    "description": "Account health, observed balances, verified points and retained run results from the Control API.",
+    "tags": ["microsoft-rewards", "accounts"],
+    "timezone": "browser",
+    "editable": false,
+    "graphTooltip": 1,
+    "schemaVersion": 41,
+    "version": 2,
+    "refresh": "30s",
+    "links": [
+        {
+            "title": "Search Diagnostics",
+            "type": "link",
+            "url": "/d/rewards-search-diagnostics",
+            "keepTime": true
+        }
+    ],
+    "time": {
+        "from": "now-7d",
+        "to": "now"
+    },
+    "timepicker": {
+        "refresh_intervals": ["30s", "1m", "5m", "15m"]
+    },
+    "templating": {
+        "list": [
+            {
+                "name": "datasource",
+                "label": "Data source",
+                "type": "datasource",
+                "query": "prometheus",
+                "refresh": 1,
+                "current": {
+                    "selected": true,
+                    "text": "Rewards Prometheus",
+                    "value": "rewards-prometheus"
+                },
+                "options": []
+            },
+            {
+                "name": "deployment",
+                "label": "Deployment",
+                "type": "query",
+                "datasource": {
+                    "type": "prometheus",
+                    "uid": "${datasource}"
+                },
+                "definition": "label_values(rewards_account_info{job=\"microsoft-rewards\"}, deployment)",
+                "query": {
+                    "query": "label_values(rewards_account_info{job=\"microsoft-rewards\"}, deployment)",
+                    "refId": "DeploymentVariable"
+                },
+                "refresh": 1,
+                "sort": 1,
+                "multi": false,
+                "includeAll": false,
+                "current": {
+                    "selected": true,
+                    "text": "local",
+                    "value": "local"
+                },
+                "options": []
+            },
+            {
+                "name": "account",
+                "label": "Account",
+                "type": "query",
+                "datasource": {
+                    "type": "prometheus",
+                    "uid": "${datasource}"
+                },
+                "definition": "label_values(rewards_account_info{job=\"microsoft-rewards\",deployment=~\"${deployment:regex}\"}, email)",
+                "query": {
+                    "query": "label_values(rewards_account_info{job=\"microsoft-rewards\",deployment=~\"${deployment:regex}\"}, email)",
+                    "refId": "AccountVariable"
+                },
+                "refresh": 1,
+                "sort": 1,
+                "multi": true,
+                "includeAll": true,
+                "allValue": ".*",
+                "current": {
+                    "selected": true,
+                    "text": "All",
+                    "value": "$__all"
+                },
+                "options": []
+            },
+            {
+                "name": "device",
+                "label": "Search device",
+                "type": "custom",
+                "query": "mobile,desktop",
+                "multi": true,
+                "includeAll": true,
+                "allValue": ".*",
+                "current": {
+                    "selected": true,
+                    "text": "All",
+                    "value": "$__all"
+                },
+                "options": [
+                    {
+                        "selected": false,
+                        "text": "mobile",
+                        "value": "mobile"
+                    },
+                    {
+                        "selected": false,
+                        "text": "desktop",
+                        "value": "desktop"
+                    }
+                ]
+            }
+        ]
+    },
+    "annotations": {
+        "list": []
+    },
+    "panels": [
+        {
+            "id": 1,
+            "title": "Control API",
+            "type": "stat",
+            "datasource": {
+                "type": "prometheus",
+                "uid": "${datasource}"
+            },
+            "gridPos": {
+                "x": 0,
+                "y": 0,
+                "w": 6,
+                "h": 4
+            },
+            "fieldConfig": {
+                "defaults": {
+                    "unit": "short",
+                    "decimals": 0,
+                    "color": {
+                        "mode": "palette-classic"
+                    },
+                    "thresholds": {
+                        "mode": "absolute",
+                        "steps": [
+                            {
+                                "color": "green",
+                                "value": null
+                            }
+                        ]
+                    },
+                    "mappings": [
+                        {
+                            "type": "value",
+                            "options": {
+                                "0": {
+                                    "text": "Offline",
+                                    "color": "red"
+                                },
+                                "1": {
+                                    "text": "Online",
+                                    "color": "green"
+                                }
+                            }
+                        }
+                    ]
+                },
+                "overrides": []
+            },
+            "options": {
+                "colorMode": "value",
+                "graphMode": "none",
+                "justifyMode": "auto",
+                "textMode": "auto",
+                "reduceOptions": {
+                    "calcs": ["lastNotNull"],
+                    "fields": "",
+                    "values": false
+                }
+            },
+            "targets": [
+                {
+                    "datasource": {
+                        "type": "prometheus",
+                        "uid": "${datasource}"
+                    },
+                    "editorMode": "code",
+                    "expr": "up{job=\"microsoft-rewards\",deployment=~\"${deployment:regex}\"}",
+                    "refId": "A",
+                    "instant": true
+                }
+            ]
+        },
+        {
+            "id": 2,
+            "title": "Accounts",
+            "type": "stat",
+            "datasource": {
+                "type": "prometheus",
+                "uid": "${datasource}"
+            },
+            "gridPos": {
+                "x": 6,
+                "y": 0,
+                "w": 6,
+                "h": 4
+            },
+            "fieldConfig": {
+                "defaults": {
+                    "unit": "short",
+                    "decimals": 0,
+                    "color": {
+                        "mode": "palette-classic"
+                    },
+                    "thresholds": {
+                        "mode": "absolute",
+                        "steps": [
+                            {
+                                "color": "green",
+                                "value": null
+                            }
+                        ]
+                    }
+                },
+                "overrides": []
+            },
+            "options": {
+                "colorMode": "value",
+                "graphMode": "none",
+                "justifyMode": "auto",
+                "textMode": "auto",
+                "reduceOptions": {
+                    "calcs": ["lastNotNull"],
+                    "fields": "",
+                    "values": false
+                }
+            },
+            "targets": [
+                {
+                    "datasource": {
+                        "type": "prometheus",
+                        "uid": "${datasource}"
+                    },
+                    "editorMode": "code",
+                    "expr": "count(rewards_account_info{job=\"microsoft-rewards\",deployment=~\"${deployment:regex}\",email=~\"${account}\"}) or vector(0)",
+                    "refId": "A",
+                    "instant": true
+                }
+            ]
+        },
+        {
+            "id": 3,
+            "title": "Needs attention",
+            "type": "stat",
+            "datasource": {
+                "type": "prometheus",
+                "uid": "${datasource}"
+            },
+            "gridPos": {
+                "x": 12,
+                "y": 0,
+                "w": 6,
+                "h": 4
+            },
+            "fieldConfig": {
+                "defaults": {
+                    "unit": "short",
+                    "decimals": 0,
+                    "color": {
+                        "mode": "thresholds"
+                    },
+                    "thresholds": {
+                        "mode": "absolute",
+                        "steps": [
+                            {
+                                "color": "green",
+                                "value": null
+                            },
+                            {
+                                "color": "orange",
+                                "value": 1
+                            }
+                        ]
+                    }
+                },
+                "overrides": []
+            },
+            "options": {
+                "colorMode": "value",
+                "graphMode": "none",
+                "justifyMode": "auto",
+                "textMode": "auto",
+                "reduceOptions": {
+                    "calcs": ["lastNotNull"],
+                    "fields": "",
+                    "values": false
+                }
+            },
+            "targets": [
+                {
+                    "datasource": {
+                        "type": "prometheus",
+                        "uid": "${datasource}"
+                    },
+                    "editorMode": "code",
+                    "expr": "sum(rewards_account_status{job=\"microsoft-rewards\",deployment=~\"${deployment:regex}\",email=~\"${account}\"} >= bool 3) or vector(0)",
+                    "refId": "A",
+                    "instant": true
+                }
+            ]
+        },
+        {
+            "id": 4,
+            "title": "Verified points",
+            "type": "stat",
+            "datasource": {
+                "type": "prometheus",
+                "uid": "${datasource}"
+            },
+            "gridPos": {
+                "x": 18,
+                "y": 0,
+                "w": 6,
+                "h": 4
+            },
+            "fieldConfig": {
+                "defaults": {
+                    "unit": "short",
+                    "decimals": 0,
+                    "color": {
+                        "mode": "palette-classic"
+                    },
+                    "thresholds": {
+                        "mode": "absolute",
+                        "steps": [
+                            {
+                                "color": "green",
+                                "value": null
+                            }
+                        ]
+                    }
+                },
+                "overrides": []
+            },
+            "options": {
+                "colorMode": "value",
+                "graphMode": "none",
+                "justifyMode": "auto",
+                "textMode": "auto",
+                "reduceOptions": {
+                    "calcs": ["lastNotNull"],
+                    "fields": "",
+                    "values": false
+                }
+            },
+            "targets": [
+                {
+                    "datasource": {
+                        "type": "prometheus",
+                        "uid": "${datasource}"
+                    },
+                    "editorMode": "code",
+                    "expr": "sum(rewards_account_collected_points{job=\"microsoft-rewards\",deployment=~\"${deployment:regex}\",email=~\"${account}\"})",
+                    "refId": "A",
+                    "instant": true
+                }
+            ]
+        },
+        {
+            "id": 5,
+            "title": "Accounts",
+            "type": "table",
+            "datasource": {
+                "type": "prometheus",
+                "uid": "${datasource}"
+            },
+            "gridPos": {
+                "x": 0,
+                "y": 4,
+                "w": 24,
+                "h": 10
+            },
+            "fieldConfig": {
+                "defaults": {
+                    "custom": {
+                        "align": "auto",
+                        "cellOptions": {
+                            "type": "auto"
+                        },
+                        "filterable": true
+                    },
+                    "noValue": "Unknown"
+                },
+                "overrides": [
+                    {
+                        "matcher": {
+                            "id": "byName",
+                            "options": "Email"
+                        },
+                        "properties": [
+                            {
+                                "id": "custom.width",
+                                "value": 270
+                            }
+                        ]
+                    },
+                    {
+                        "matcher": {
+                            "id": "byName",
+                            "options": "Status"
+                        },
+                        "properties": [
+                            {
+                                "id": "mappings",
+                                "value": [
+                                    {
+                                        "type": "value",
+                                        "options": {
+                                            "0": {
+                                                "text": "Never run",
+                                                "color": "gray"
+                                            },
+                                            "1": {
+                                                "text": "Running",
+                                                "color": "blue"
+                                            },
+                                            "2": {
+                                                "text": "Completed",
+                                                "color": "green"
+                                            },
+                                            "3": {
+                                                "text": "Partial",
+                                                "color": "orange"
+                                            },
+                                            "4": {
+                                                "text": "Skipped",
+                                                "color": "yellow"
+                                            },
+                                            "5": {
+                                                "text": "Failed",
+                                                "color": "red"
+                                            },
+                                            "6": {
+                                                "text": "Cancelled",
+                                                "color": "orange"
+                                            },
+                                            "7": {
+                                                "text": "Unknown",
+                                                "color": "gray"
+                                            }
+                                        }
+                                    }
+                                ]
+                            },
+                            {
+                                "id": "custom.cellOptions",
+                                "value": {
+                                    "type": "color-text"
+                                }
+                            }
+                        ]
+                    },
+                    {
+                        "matcher": {
+                            "id": "byName",
+                            "options": "Balance"
+                        },
+                        "properties": [
+                            {
+                                "id": "decimals",
+                                "value": 0
+                            },
+                            {
+                                "id": "unit",
+                                "value": "locale"
+                            }
+                        ]
+                    },
+                    {
+                        "matcher": {
+                            "id": "byName",
+                            "options": "Collected"
+                        },
+                        "properties": [
+                            {
+                                "id": "decimals",
+                                "value": 0
+                            },
+                            {
+                                "id": "unit",
+                                "value": "locale"
+                            }
+                        ]
+                    },
+                    {
+                        "matcher": {
+                            "id": "byName",
+                            "options": "Last finished"
+                        },
+                        "properties": [
+                            {
+                                "id": "unit",
+                                "value": "dateTimeAsIso"
+                            }
+                        ]
+                    },
+                    {
+                        "matcher": {
+                            "id": "byName",
+                            "options": "Duration"
+                        },
+                        "properties": [
+                            {
+                                "id": "unit",
+                                "value": "s"
+                            },
+                            {
+                                "id": "decimals",
+                                "value": 1
+                            }
+                        ]
+                    },
+                    {
+                        "matcher": {
+                            "id": "byName",
+                            "options": "Points verified"
+                        },
+                        "properties": [
+                            {
+                                "id": "mappings",
+                                "value": [
+                                    {
+                                        "type": "value",
+                                        "options": {
+                                            "0": {
+                                                "text": "Unknown",
+                                                "color": "orange"
+                                            },
+                                            "1": {
+                                                "text": "Yes",
+                                                "color": "green"
+                                            }
+                                        }
+                                    }
+                                ]
+                            }
+                        ]
+                    }
+                ]
+            },
+            "options": {
+                "showHeader": true,
+                "cellHeight": "sm",
+                "sortBy": [
+                    {
+                        "displayName": "Email",
+                        "desc": false
+                    }
+                ]
+            },
+            "targets": [
+                {
+                    "datasource": {
+                        "type": "prometheus",
+                        "uid": "${datasource}"
+                    },
+                    "editorMode": "code",
+                    "expr": "rewards_account_status{job=\"microsoft-rewards\",deployment=~\"${deployment:regex}\",email=~\"${account}\"}",
+                    "refId": "A",
+                    "instant": true,
+                    "format": "table"
+                },
+                {
+                    "datasource": {
+                        "type": "prometheus",
+                        "uid": "${datasource}"
+                    },
+                    "editorMode": "code",
+                    "expr": "rewards_account_balance_points{job=\"microsoft-rewards\",deployment=~\"${deployment:regex}\",email=~\"${account}\"}",
+                    "refId": "B",
+                    "instant": true,
+                    "format": "table"
+                },
+                {
+                    "datasource": {
+                        "type": "prometheus",
+                        "uid": "${datasource}"
+                    },
+                    "editorMode": "code",
+                    "expr": "rewards_account_collected_points{job=\"microsoft-rewards\",deployment=~\"${deployment:regex}\",email=~\"${account}\"}",
+                    "refId": "C",
+                    "instant": true,
+                    "format": "table"
+                },
+                {
+                    "datasource": {
+                        "type": "prometheus",
+                        "uid": "${datasource}"
+                    },
+                    "editorMode": "code",
+                    "expr": "1000 * rewards_account_last_run_timestamp_seconds{job=\"microsoft-rewards\",deployment=~\"${deployment:regex}\",email=~\"${account}\"}",
+                    "refId": "D",
+                    "instant": true,
+                    "format": "table"
+                },
+                {
+                    "datasource": {
+                        "type": "prometheus",
+                        "uid": "${datasource}"
+                    },
+                    "editorMode": "code",
+                    "expr": "rewards_account_last_run_duration_seconds{job=\"microsoft-rewards\",deployment=~\"${deployment:regex}\",email=~\"${account}\"}",
+                    "refId": "E",
+                    "instant": true,
+                    "format": "table"
+                },
+                {
+                    "datasource": {
+                        "type": "prometheus",
+                        "uid": "${datasource}"
+                    },
+                    "editorMode": "code",
+                    "expr": "rewards_account_points_known{job=\"microsoft-rewards\",deployment=~\"${deployment:regex}\",email=~\"${account}\"}",
+                    "refId": "F",
+                    "instant": true,
+                    "format": "table"
+                }
+            ],
+            "transformations": [
+                {
+                    "id": "joinByField",
+                    "options": {
+                        "byField": "email",
+                        "mode": "outer"
+                    }
+                },
+                {
+                    "id": "filterFieldsByName",
+                    "options": {
+                        "include": {
+                            "names": ["email", "Value #A", "Value #B", "Value #C", "Value #D", "Value #E", "Value #F"]
+                        }
+                    }
+                },
+                {
+                    "id": "organize",
+                    "options": {
+                        "indexByName": {
+                            "email": 0,
+                            "Value #A": 1,
+                            "Value #B": 2,
+                            "Value #C": 3,
+                            "Value #D": 4,
+                            "Value #E": 5,
+                            "Value #F": 6
+                        },
+                        "renameByName": {
+                            "email": "Email",
+                            "Value #A": "Status",
+                            "Value #B": "Balance",
+                            "Value #C": "Collected",
+                            "Value #D": "Last finished",
+                            "Value #E": "Duration",
+                            "Value #F": "Points verified"
+                        }
+                    }
+                }
+            ]
+        },
+        {
+            "id": 12,
+            "title": "Search by account and device",
+            "type": "table",
+            "datasource": {
+                "type": "prometheus",
+                "uid": "${datasource}"
+            },
+            "gridPos": {
+                "x": 0,
+                "y": 14,
+                "w": 24,
+                "h": 9
+            },
+            "fieldConfig": {
+                "defaults": {
+                    "custom": {
+                        "align": "auto",
+                        "cellOptions": {
+                            "type": "auto"
+                        },
+                        "filterable": true
+                    },
+                    "noValue": "Unknown"
+                },
+                "overrides": [
+                    {
+                        "matcher": {
+                            "id": "byName",
+                            "options": "Account / Device"
+                        },
+                        "properties": [
+                            {
+                                "id": "custom.width",
+                                "value": 340
+                            }
+                        ]
+                    },
+                    {
+                        "matcher": {
+                            "id": "byName",
+                            "options": "Search status"
+                        },
+                        "properties": [
+                            {
+                                "id": "mappings",
+                                "value": [
+                                    {
+                                        "type": "value",
+                                        "options": {
+                                            "0": {
+                                                "text": "Unobserved",
+                                                "color": "gray"
+                                            },
+                                            "1": {
+                                                "text": "Confirmed",
+                                                "color": "green"
+                                            },
+                                            "2": {
+                                                "text": "Unconfirmed",
+                                                "color": "orange"
+                                            },
+                                            "3": {
+                                                "text": "Skipped",
+                                                "color": "yellow"
+                                            },
+                                            "4": {
+                                                "text": "Failed",
+                                                "color": "red"
+                                            }
+                                        }
+                                    }
+                                ]
+                            },
+                            {
+                                "id": "custom.cellOptions",
+                                "value": {
+                                    "type": "color-text"
+                                }
+                            }
+                        ]
+                    },
+                    {
+                        "matcher": {
+                            "id": "byName",
+                            "options": "Collected"
+                        },
+                        "properties": [
+                            {
+                                "id": "unit",
+                                "value": "locale"
+                            },
+                            {
+                                "id": "decimals",
+                                "value": 0
+                            }
+                        ]
+                    },
+                    {
+                        "matcher": {
+                            "id": "byName",
+                            "options": "Available at start"
+                        },
+                        "properties": [
+                            {
+                                "id": "unit",
+                                "value": "locale"
+                            },
+                            {
+                                "id": "decimals",
+                                "value": 0
+                            }
+                        ]
+                    },
+                    {
+                        "matcher": {
+                            "id": "byName",
+                            "options": "Points verified"
+                        },
+                        "properties": [
+                            {
+                                "id": "mappings",
+                                "value": [
+                                    {
+                                        "type": "value",
+                                        "options": {
+                                            "0": {
+                                                "text": "Unknown",
+                                                "color": "orange"
+                                            },
+                                            "1": {
+                                                "text": "Yes",
+                                                "color": "green"
+                                            }
+                                        }
+                                    }
+                                ]
+                            }
+                        ]
+                    }
+                ]
+            },
+            "options": {
+                "showHeader": true,
+                "cellHeight": "sm",
+                "sortBy": [
+                    {
+                        "displayName": "Account / Device",
+                        "desc": false
+                    }
+                ]
+            },
+            "targets": [
+                {
+                    "datasource": {
+                        "type": "prometheus",
+                        "uid": "${datasource}"
+                    },
+                    "editorMode": "code",
+                    "expr": "label_join(rewards_account_search_status{job=\"microsoft-rewards\",deployment=~\"${deployment:regex}\",email=~\"${account}\",device=~\"${device:regex}\"}, \"search_row\", \" / \", \"email\", \"device\")",
+                    "refId": "A",
+                    "instant": true,
+                    "format": "table"
+                },
+                {
+                    "datasource": {
+                        "type": "prometheus",
+                        "uid": "${datasource}"
+                    },
+                    "editorMode": "code",
+                    "expr": "label_join(rewards_account_search_collected_points{job=\"microsoft-rewards\",deployment=~\"${deployment:regex}\",email=~\"${account}\",device=~\"${device:regex}\"}, \"search_row\", \" / \", \"email\", \"device\")",
+                    "refId": "B",
+                    "instant": true,
+                    "format": "table"
+                },
+                {
+                    "datasource": {
+                        "type": "prometheus",
+                        "uid": "${datasource}"
+                    },
+                    "editorMode": "code",
+                    "expr": "label_join(rewards_account_search_available_points{job=\"microsoft-rewards\",deployment=~\"${deployment:regex}\",email=~\"${account}\",device=~\"${device:regex}\"}, \"search_row\", \" / \", \"email\", \"device\")",
+                    "refId": "C",
+                    "instant": true,
+                    "format": "table"
+                },
+                {
+                    "datasource": {
+                        "type": "prometheus",
+                        "uid": "${datasource}"
+                    },
+                    "editorMode": "code",
+                    "expr": "label_join(rewards_account_search_points_known{job=\"microsoft-rewards\",deployment=~\"${deployment:regex}\",email=~\"${account}\",device=~\"${device:regex}\"}, \"search_row\", \" / \", \"email\", \"device\")",
+                    "refId": "D",
+                    "instant": true,
+                    "format": "table"
+                }
+            ],
+            "transformations": [
+                {
+                    "id": "joinByField",
+                    "options": {
+                        "byField": "search_row",
+                        "mode": "outer"
+                    }
+                },
+                {
+                    "id": "filterFieldsByName",
+                    "options": {
+                        "include": {
+                            "names": ["search_row", "Value #A", "Value #B", "Value #C", "Value #D"]
+                        }
+                    }
+                },
+                {
+                    "id": "organize",
+                    "options": {
+                        "indexByName": {
+                            "search_row": 0,
+                            "Value #A": 1,
+                            "Value #B": 2,
+                            "Value #C": 3,
+                            "Value #D": 4
+                        },
+                        "renameByName": {
+                            "search_row": "Account / Device",
+                            "Value #A": "Search status",
+                            "Value #B": "Collected",
+                            "Value #C": "Available at start",
+                            "Value #D": "Points verified"
+                        }
+                    }
+                }
+            ]
+        },
+        {
+            "id": 13,
+            "title": "Search points by account",
+            "type": "bargauge",
+            "datasource": {
+                "type": "prometheus",
+                "uid": "${datasource}"
+            },
+            "gridPos": {
+                "x": 0,
+                "y": 23,
+                "w": 12,
+                "h": 8
+            },
+            "fieldConfig": {
+                "defaults": {
+                    "unit": "locale",
+                    "decimals": 0,
+                    "color": {
+                        "mode": "palette-classic"
+                    },
+                    "thresholds": {
+                        "mode": "absolute",
+                        "steps": [
+                            {
+                                "color": "green",
+                                "value": null
+                            }
+                        ]
+                    }
+                },
+                "overrides": []
+            },
+            "options": {
+                "orientation": "horizontal",
+                "displayMode": "basic",
+                "valueMode": "color",
+                "showUnfilled": true,
+                "reduceOptions": {
+                    "calcs": ["lastNotNull"],
+                    "fields": "",
+                    "values": false
+                }
+            },
+            "targets": [
+                {
+                    "datasource": {
+                        "type": "prometheus",
+                        "uid": "${datasource}"
+                    },
+                    "editorMode": "code",
+                    "expr": "sum by (email, device) (rewards_account_search_collected_points{job=\"microsoft-rewards\",deployment=~\"${deployment:regex}\",email=~\"${account}\",device=~\"${device:regex}\"})",
+                    "refId": "A",
+                    "instant": true,
+                    "legendFormat": "{{email}} / {{device}}"
+                }
+            ]
+        },
+        {
+            "id": 14,
+            "title": "Search points by device",
+            "type": "bargauge",
+            "datasource": {
+                "type": "prometheus",
+                "uid": "${datasource}"
+            },
+            "gridPos": {
+                "x": 12,
+                "y": 23,
+                "w": 12,
+                "h": 8
+            },
+            "fieldConfig": {
+                "defaults": {
+                    "unit": "locale",
+                    "decimals": 0,
+                    "color": {
+                        "mode": "palette-classic"
+                    },
+                    "thresholds": {
+                        "mode": "absolute",
+                        "steps": [
+                            {
+                                "color": "green",
+                                "value": null
+                            }
+                        ]
+                    }
+                },
+                "overrides": []
+            },
+            "options": {
+                "orientation": "horizontal",
+                "displayMode": "basic",
+                "valueMode": "color",
+                "showUnfilled": true,
+                "reduceOptions": {
+                    "calcs": ["lastNotNull"],
+                    "fields": "",
+                    "values": false
+                }
+            },
+            "targets": [
+                {
+                    "datasource": {
+                        "type": "prometheus",
+                        "uid": "${datasource}"
+                    },
+                    "editorMode": "code",
+                    "expr": "sum by (device) (rewards_account_search_collected_points{job=\"microsoft-rewards\",deployment=~\"${deployment:regex}\",email=~\"${account}\",device=~\"${device:regex}\"})",
+                    "refId": "A",
+                    "instant": true,
+                    "legendFormat": "{{device}}"
+                }
+            ]
+        },
+        {
+            "id": 15,
+            "title": "Search points by account and device",
+            "type": "timeseries",
+            "datasource": {
+                "type": "prometheus",
+                "uid": "${datasource}"
+            },
+            "gridPos": {
+                "x": 0,
+                "y": 31,
+                "w": 24,
+                "h": 9
+            },
+            "fieldConfig": {
+                "defaults": {
+                    "unit": "short",
+                    "decimals": 0,
+                    "min": 0,
+                    "color": {
+                        "mode": "palette-classic"
+                    },
+                    "custom": {
+                        "drawStyle": "line",
+                        "lineInterpolation": "stepAfter",
+                        "lineWidth": 2,
+                        "fillOpacity": 8,
+                        "showPoints": "never",
+                        "spanNulls": false
+                    }
+                },
+                "overrides": []
+            },
+            "options": {
+                "legend": {
+                    "displayMode": "table",
+                    "placement": "bottom",
+                    "calcs": ["lastNotNull"]
+                },
+                "tooltip": {
+                    "mode": "multi",
+                    "sort": "desc"
+                }
+            },
+            "targets": [
+                {
+                    "datasource": {
+                        "type": "prometheus",
+                        "uid": "${datasource}"
+                    },
+                    "editorMode": "code",
+                    "expr": "rewards_account_search_collected_points{job=\"microsoft-rewards\",deployment=~\"${deployment:regex}\",email=~\"${account}\",device=~\"${device:regex}\"}",
+                    "refId": "A",
+                    "range": true,
+                    "legendFormat": "{{email}} / {{device}}"
+                }
+            ]
+        },
+        {
+            "id": 6,
+            "title": "Account balance",
+            "type": "timeseries",
+            "datasource": {
+                "type": "prometheus",
+                "uid": "${datasource}"
+            },
+            "gridPos": {
+                "x": 0,
+                "y": 40,
+                "w": 12,
+                "h": 9
+            },
+            "fieldConfig": {
+                "defaults": {
+                    "unit": "short",
+                    "decimals": 0,
+                    "min": 0,
+                    "color": {
+                        "mode": "palette-classic"
+                    },
+                    "custom": {
+                        "drawStyle": "line",
+                        "lineInterpolation": "stepAfter",
+                        "lineWidth": 2,
+                        "fillOpacity": 8,
+                        "showPoints": "never",
+                        "spanNulls": false
+                    }
+                },
+                "overrides": []
+            },
+            "options": {
+                "legend": {
+                    "displayMode": "table",
+                    "placement": "bottom",
+                    "calcs": ["lastNotNull"]
+                },
+                "tooltip": {
+                    "mode": "multi",
+                    "sort": "desc"
+                }
+            },
+            "targets": [
+                {
+                    "datasource": {
+                        "type": "prometheus",
+                        "uid": "${datasource}"
+                    },
+                    "editorMode": "code",
+                    "expr": "rewards_account_balance_points{job=\"microsoft-rewards\",deployment=~\"${deployment:regex}\",email=~\"${account}\"}",
+                    "refId": "A",
+                    "legendFormat": "{{email}}",
+                    "range": true
+                }
+            ]
+        },
+        {
+            "id": 7,
+            "title": "Points in current or latest run",
+            "type": "timeseries",
+            "datasource": {
+                "type": "prometheus",
+                "uid": "${datasource}"
+            },
+            "gridPos": {
+                "x": 12,
+                "y": 40,
+                "w": 12,
+                "h": 9
+            },
+            "fieldConfig": {
+                "defaults": {
+                    "unit": "short",
+                    "decimals": 0,
+                    "min": 0,
+                    "color": {
+                        "mode": "palette-classic"
+                    },
+                    "custom": {
+                        "drawStyle": "line",
+                        "lineInterpolation": "stepAfter",
+                        "lineWidth": 2,
+                        "fillOpacity": 8,
+                        "showPoints": "never",
+                        "spanNulls": false
+                    }
+                },
+                "overrides": []
+            },
+            "options": {
+                "legend": {
+                    "displayMode": "table",
+                    "placement": "bottom",
+                    "calcs": ["lastNotNull"]
+                },
+                "tooltip": {
+                    "mode": "multi",
+                    "sort": "desc"
+                }
+            },
+            "targets": [
+                {
+                    "datasource": {
+                        "type": "prometheus",
+                        "uid": "${datasource}"
+                    },
+                    "editorMode": "code",
+                    "expr": "rewards_account_collected_points{job=\"microsoft-rewards\",deployment=~\"${deployment:regex}\",email=~\"${account}\"}",
+                    "refId": "A",
+                    "legendFormat": "{{email}}",
+                    "range": true
+                }
+            ]
+        },
+        {
+            "id": 8,
+            "title": "Attributed points by activity",
+            "type": "bargauge",
+            "datasource": {
+                "type": "prometheus",
+                "uid": "${datasource}"
+            },
+            "gridPos": {
+                "x": 0,
+                "y": 49,
+                "w": 12,
+                "h": 9
+            },
+            "fieldConfig": {
+                "defaults": {
+                    "unit": "short",
+                    "decimals": 0,
+                    "color": {
+                        "mode": "palette-classic"
+                    },
+                    "thresholds": {
+                        "mode": "absolute",
+                        "steps": [
+                            {
+                                "color": "green",
+                                "value": null
+                            }
+                        ]
+                    }
+                },
+                "overrides": []
+            },
+            "options": {
+                "orientation": "horizontal",
+                "displayMode": "basic",
+                "valueMode": "color",
+                "showUnfilled": true,
+                "reduceOptions": {
+                    "calcs": ["lastNotNull"],
+                    "fields": "",
+                    "values": false
+                }
+            },
+            "targets": [
+                {
+                    "datasource": {
+                        "type": "prometheus",
+                        "uid": "${datasource}"
+                    },
+                    "editorMode": "code",
+                    "expr": "sum by (source) (rewards_account_collected_points_by_source{job=\"microsoft-rewards\",deployment=~\"${deployment:regex}\",email=~\"${account}\"})",
+                    "refId": "A",
+                    "instant": true,
+                    "legendFormat": "{{source}}"
+                }
+            ]
+        },
+        {
+            "id": 9,
+            "title": "Remaining earnable points",
+            "type": "timeseries",
+            "datasource": {
+                "type": "prometheus",
+                "uid": "${datasource}"
+            },
+            "gridPos": {
+                "x": 12,
+                "y": 49,
+                "w": 12,
+                "h": 9
+            },
+            "fieldConfig": {
+                "defaults": {
+                    "unit": "short",
+                    "decimals": 0,
+                    "min": 0,
+                    "color": {
+                        "mode": "palette-classic"
+                    },
+                    "custom": {
+                        "drawStyle": "line",
+                        "lineInterpolation": "stepAfter",
+                        "lineWidth": 2,
+                        "fillOpacity": 8,
+                        "showPoints": "never",
+                        "spanNulls": false
+                    }
+                },
+                "overrides": []
+            },
+            "options": {
+                "legend": {
+                    "displayMode": "table",
+                    "placement": "bottom",
+                    "calcs": ["lastNotNull"]
+                },
+                "tooltip": {
+                    "mode": "multi",
+                    "sort": "desc"
+                }
+            },
+            "targets": [
+                {
+                    "datasource": {
+                        "type": "prometheus",
+                        "uid": "${datasource}"
+                    },
+                    "editorMode": "code",
+                    "expr": "rewards_account_remaining_points{job=\"microsoft-rewards\",deployment=~\"${deployment:regex}\",email=~\"${account}\"}",
+                    "refId": "A",
+                    "legendFormat": "{{email}} / {{pool}}",
+                    "range": true
+                }
+            ]
+        },
+        {
+            "id": 10,
+            "title": "Daily streak",
+            "type": "timeseries",
+            "datasource": {
+                "type": "prometheus",
+                "uid": "${datasource}"
+            },
+            "gridPos": {
+                "x": 0,
+                "y": 58,
+                "w": 12,
+                "h": 9
+            },
+            "fieldConfig": {
+                "defaults": {
+                    "unit": "short",
+                    "decimals": 0,
+                    "min": 0,
+                    "color": {
+                        "mode": "palette-classic"
+                    },
+                    "custom": {
+                        "drawStyle": "line",
+                        "lineInterpolation": "stepAfter",
+                        "lineWidth": 2,
+                        "fillOpacity": 8,
+                        "showPoints": "never",
+                        "spanNulls": false
+                    }
+                },
+                "overrides": []
+            },
+            "options": {
+                "legend": {
+                    "displayMode": "table",
+                    "placement": "bottom",
+                    "calcs": ["lastNotNull"]
+                },
+                "tooltip": {
+                    "mode": "multi",
+                    "sort": "desc"
+                }
+            },
+            "targets": [
+                {
+                    "datasource": {
+                        "type": "prometheus",
+                        "uid": "${datasource}"
+                    },
+                    "editorMode": "code",
+                    "expr": "rewards_account_streak_length{job=\"microsoft-rewards\",deployment=~\"${deployment:regex}\",email=~\"${account}\"}",
+                    "refId": "A",
+                    "legendFormat": "{{email}}",
+                    "range": true
+                }
+            ]
+        },
+        {
+            "id": 11,
+            "title": "Time since last completed run",
+            "type": "timeseries",
+            "datasource": {
+                "type": "prometheus",
+                "uid": "${datasource}"
+            },
+            "gridPos": {
+                "x": 12,
+                "y": 58,
+                "w": 12,
+                "h": 9
+            },
+            "fieldConfig": {
+                "defaults": {
+                    "unit": "s",
+                    "decimals": 0,
+                    "min": 0,
+                    "color": {
+                        "mode": "palette-classic"
+                    },
+                    "custom": {
+                        "drawStyle": "line",
+                        "lineInterpolation": "stepAfter",
+                        "lineWidth": 2,
+                        "fillOpacity": 8,
+                        "showPoints": "never",
+                        "spanNulls": false
+                    }
+                },
+                "overrides": []
+            },
+            "options": {
+                "legend": {
+                    "displayMode": "table",
+                    "placement": "bottom",
+                    "calcs": ["lastNotNull"]
+                },
+                "tooltip": {
+                    "mode": "multi",
+                    "sort": "desc"
+                }
+            },
+            "targets": [
+                {
+                    "datasource": {
+                        "type": "prometheus",
+                        "uid": "${datasource}"
+                    },
+                    "editorMode": "code",
+                    "expr": "time() - rewards_account_last_run_timestamp_seconds{job=\"microsoft-rewards\",deployment=~\"${deployment:regex}\",email=~\"${account}\"}",
+                    "refId": "A",
+                    "legendFormat": "{{email}}",
+                    "range": true
+                }
+            ]
+        }
+    ]
+}

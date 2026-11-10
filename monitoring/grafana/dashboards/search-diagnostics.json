@@ -1,0 +1,202 @@
+{
+    "uid": "rewards-search-diagnostics",
+    "title": "Rewards Search Diagnostics",
+    "tags": ["rewards", "search"],
+    "schemaVersion": 39,
+    "version": 1,
+    "refresh": "10s",
+    "timezone": "browser",
+    "time": { "from": "now-24h", "to": "now" },
+    "links": [{ "title": "Account Results", "type": "link", "url": "/d/rewards-accounts", "keepTime": true }],
+    "templating": {
+        "list": [
+            {
+                "name": "datasource",
+                "label": "Log Data Source",
+                "type": "datasource",
+                "query": "loki",
+                "current": { "text": "Rewards Search Logs", "value": "rewards-loki", "selected": true }
+            },
+            {
+                "name": "deployment",
+                "label": "Deployment",
+                "type": "query",
+                "datasource": { "type": "loki", "uid": "${datasource}" },
+                "query": "label_values({job=\"microsoft-rewards-search\"}, deployment)",
+                "refresh": 1,
+                "includeAll": true,
+                "allValue": ".*",
+                "current": { "text": "All", "value": "$__all", "selected": true }
+            },
+            {
+                "name": "account",
+                "label": "Account (Regex)",
+                "type": "textbox",
+                "query": ".*",
+                "current": { "text": ".*", "value": ".*", "selected": true }
+            },
+            {
+                "name": "device",
+                "label": "Device",
+                "type": "custom",
+                "query": "mobile,desktop",
+                "multi": true,
+                "includeAll": true,
+                "allValue": ".*",
+                "current": { "text": "All", "value": "$__all", "selected": true }
+            },
+            {
+                "name": "stage",
+                "label": "Stage",
+                "type": "custom",
+                "query": "signin,quota,query,progress,outcome",
+                "multi": true,
+                "includeAll": true,
+                "allValue": ".*",
+                "current": { "text": "All", "value": "$__all", "selected": true }
+            }
+        ]
+    },
+    "panels": [
+        {
+            "id": 1,
+            "title": "Unverified Sign-In Checks",
+            "type": "stat",
+            "datasource": { "type": "loki", "uid": "${datasource}" },
+            "gridPos": { "x": 0, "y": 0, "w": 6, "h": 4 },
+            "targets": [
+                {
+                    "refId": "A",
+                    "queryType": "instant",
+                    "expr": "sum(count_over_time({job=\"microsoft-rewards-search\",deployment=~\"${deployment:regex}\",device=~\"${device:regex}\",stage=~\"${stage:regex}\"} | json | email=~`${account:raw}` | stage=\"signin\" | status=~\"unverified|failed\" [$__range])) or vector(0)"
+                }
+            ],
+            "fieldConfig": {
+                "defaults": {
+                    "decimals": 0,
+                    "color": { "mode": "thresholds" },
+                    "thresholds": {
+                        "mode": "absolute",
+                        "steps": [
+                            { "color": "green", "value": null },
+                            { "color": "red", "value": 1 }
+                        ]
+                    }
+                },
+                "overrides": []
+            },
+            "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "value", "graphMode": "none" }
+        },
+        {
+            "id": 2,
+            "title": "Missing Quota Reads",
+            "type": "stat",
+            "datasource": { "type": "loki", "uid": "${datasource}" },
+            "gridPos": { "x": 6, "y": 0, "w": 6, "h": 4 },
+            "targets": [
+                {
+                    "refId": "A",
+                    "queryType": "instant",
+                    "expr": "sum(count_over_time({job=\"microsoft-rewards-search\",deployment=~\"${deployment:regex}\",device=~\"${device:regex}\",stage=~\"${stage:regex}\"} | json | email=~`${account:raw}` | stage=\"quota\" | status=\"unavailable\" [$__range])) or vector(0)"
+                }
+            ],
+            "fieldConfig": {
+                "defaults": {
+                    "decimals": 0,
+                    "color": { "mode": "thresholds" },
+                    "thresholds": {
+                        "mode": "absolute",
+                        "steps": [
+                            { "color": "green", "value": null },
+                            { "color": "yellow", "value": 1 }
+                        ]
+                    }
+                },
+                "overrides": []
+            },
+            "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "value", "graphMode": "none" }
+        },
+        {
+            "id": 3,
+            "title": "Zero-Credit Batches",
+            "type": "stat",
+            "datasource": { "type": "loki", "uid": "${datasource}" },
+            "gridPos": { "x": 12, "y": 0, "w": 6, "h": 4 },
+            "targets": [
+                {
+                    "refId": "A",
+                    "queryType": "instant",
+                    "expr": "sum(count_over_time({job=\"microsoft-rewards-search\",deployment=~\"${deployment:regex}\",device=~\"${device:regex}\",stage=~\"${stage:regex}\"} | json | email=~`${account:raw}` | stage=\"progress\" | status=\"no-credit\" | reason=\"batch-measured\" [$__range])) or vector(0)"
+                }
+            ],
+            "fieldConfig": {
+                "defaults": {
+                    "decimals": 0,
+                    "color": { "mode": "thresholds" },
+                    "thresholds": {
+                        "mode": "absolute",
+                        "steps": [
+                            { "color": "green", "value": null },
+                            { "color": "yellow", "value": 1 }
+                        ]
+                    }
+                },
+                "overrides": []
+            },
+            "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "value", "graphMode": "none" }
+        },
+        {
+            "id": 4,
+            "title": "Search Submission Failures",
+            "type": "stat",
+            "datasource": { "type": "loki", "uid": "${datasource}" },
+            "gridPos": { "x": 18, "y": 0, "w": 6, "h": 4 },
+            "targets": [
+                {
+                    "refId": "A",
+                    "queryType": "instant",
+                    "expr": "sum(count_over_time({job=\"microsoft-rewards-search\",deployment=~\"${deployment:regex}\",device=~\"${device:regex}\",stage=~\"${stage:regex}\"} | json | email=~`${account:raw}` | stage=\"query\" | status=\"failed\" [$__range])) or vector(0)"
+                }
+            ],
+            "fieldConfig": {
+                "defaults": {
+                    "decimals": 0,
+                    "color": { "mode": "thresholds" },
+                    "thresholds": {
+                        "mode": "absolute",
+                        "steps": [
+                            { "color": "green", "value": null },
+                            { "color": "red", "value": 1 }
+                        ]
+                    }
+                },
+                "overrides": []
+            },
+            "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "value", "graphMode": "none" }
+        },
+        {
+            "id": 5,
+            "title": "Search Diagnostic Events",
+            "type": "logs",
+            "datasource": { "type": "loki", "uid": "${datasource}" },
+            "gridPos": { "x": 0, "y": 4, "w": 24, "h": 18 },
+            "targets": [
+                {
+                    "refId": "A",
+                    "queryType": "range",
+                    "expr": "{job=\"microsoft-rewards-search\",deployment=~\"${deployment:regex}\",device=~\"${device:regex}\",stage=~\"${stage:regex}\"} | json | email=~`${account:raw}`"
+                }
+            ],
+            "options": {
+                "showTime": true,
+                "showLabels": false,
+                "showCommonLabels": false,
+                "wrapLogMessage": true,
+                "prettifyLogMessage": true,
+                "enableLogDetails": true,
+                "sortOrder": "Descending",
+                "dedupStrategy": "none"
+            }
+        }
+    ]
+}

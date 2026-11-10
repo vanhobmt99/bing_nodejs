@@ -1,5 +1,7 @@
 # Microsoft Rewards Automation Tool (v5.0)
 
+Account monitoring: [Grafana setup](docs/monitoring.md).
+
 Công cụ tự động cày điểm Microsoft Rewards phiên bản 5.0, hỗ trợ đa tài khoản, chạy mượt mà trên nền tảng Chromium chống phát hiện bot.
 
 ---

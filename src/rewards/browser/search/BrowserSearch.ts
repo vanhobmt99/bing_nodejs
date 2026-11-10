@@ -18,6 +18,7 @@ import type { SearchTracker } from '../../shared/search/SearchTypes'
 import type { MissingSearchPoints } from '../../types/Points'
 import type { BotContext } from '../../../core/BotContext'
 import { markSearchCompleted } from '../../../session/SessionStore'
+import { logSearchDiagnostic } from '../../../logging/SearchDiagnostic'
 
 const REFRESH_EVERY_SEARCHES = 10
 const MEASURE_EVERY_SEARCHES = 4
@@ -30,11 +31,7 @@ export function searchStagnantLimit(quotaAvailable: boolean): number {
     return quotaAvailable ? POINTS_STAGNANT_LIMIT : UNKNOWN_QUOTA_STAGNANT_LIMIT
 }
 
-export function shouldCacheSearchCompletion(
-    quotaAvailable: boolean,
-    stagnant: number,
-    stagnantLimit: number
-): boolean {
+export function shouldCacheSearchCompletion(quotaAvailable: boolean, stagnant: number, stagnantLimit: number): boolean {
     return !quotaAvailable && stagnant >= stagnantLimit
 }
 
@@ -55,6 +52,12 @@ export class BrowserSearch extends BaseActivity {
     async search(page: Page, isMobile: boolean): Promise<number | null> {
         const startBalance = Number(this.bot.userData.currentPoints ?? 0)
         this.bot.logger.info(isMobile, 'SEARCH-BING', `Starting Bing searches | currentBalance=${startBalance}`)
+        logSearchDiagnostic(this.bot, isMobile, {
+            stage: 'outcome',
+            status: 'started',
+            reason: 'search-session-started',
+            balance: startBalance
+        })
 
         const tracker = new PointsTracker(this.bot, isMobile)
         try {
@@ -88,6 +91,27 @@ export class BrowserSearch extends BaseActivity {
 
             const completed =
                 tracker.quotaComplete() || boundedCompleted || (tracker.zeroPointRun && stats.performed > 0)
+            logSearchDiagnostic(this.bot, isMobile, {
+                stage: 'outcome',
+                status: tracker.quotaComplete() ? 'completed' : stats.performed > 0 ? 'stopped' : 'skipped',
+                reason: tracker.quotaComplete()
+                    ? 'quota-complete'
+                    : boundedCompleted
+                      ? stats.totalGained === null
+                          ? 'quota-probe-unverified'
+                          : stats.totalGained > 0
+                            ? 'quota-probe-ended'
+                            : 'quota-probe-no-credit'
+                      : stats.stagnant >= tracker.stagnantLimit
+                        ? 'no-progress-limit'
+                        : 'search-session-ended',
+                quotaAvailable: tracker.quotaAvailable,
+                pointsGained: stats.totalGained,
+                searches: stats.performed,
+                stagnant: stats.stagnant,
+                stagnantLimit: tracker.stagnantLimit,
+                balance: this.bot.userData.currentPoints
+            })
             this.bot.logger[completed || (stats.totalGained ?? 0) > 0 ? 'success' : 'info'](
                 isMobile,
                 tracker.context,
@@ -110,6 +134,12 @@ export class BrowserSearch extends BaseActivity {
             )
             return stats.totalGained
         } catch (error) {
+            logSearchDiagnostic(this.bot, isMobile, {
+                stage: 'outcome',
+                status: 'failed',
+                reason: this.bot.signal.aborted ? 'search-cancelled' : 'search-error',
+                errorCode: error instanceof Error ? error.name : 'Error'
+            })
             this.bot.recordActivity('search', activityFailure(error))
             throw error
         }
@@ -211,6 +241,12 @@ export class BrowserSearch extends BaseActivity {
                 await this.bot.sessionState.synchronize('SEARCH-COOKIE-SEED')
                 page = await this.bingSearch(page, query, isMobile, replaceCrashedPage)
                 stats.performed++
+                logSearchDiagnostic(this.bot, isMobile, {
+                    stage: 'query',
+                    status: 'submitted',
+                    reason: 'results-loaded',
+                    searches: stats.performed
+                })
 
                 await this.bot.sessionState.synchronize('SEARCH-COOKIE-CAPTURE')
 
@@ -240,6 +276,17 @@ export class BrowserSearch extends BaseActivity {
                             `batch pointsGained=${batchGained ?? 'unknown'} | no confirmed progress ${stats.stagnant}/${tracker.stagnantLimit} | lastQuery="${query}" | ${tracker.progress()}`
                         )
                     }
+                    logSearchDiagnostic(this.bot, isMobile, {
+                        stage: 'progress',
+                        status: batchGained === null ? 'unknown' : batchGained > 0 ? 'credited' : 'no-credit',
+                        reason: batchGained === null ? 'measurement-unavailable' : 'batch-measured',
+                        pointsGained: stats.totalGained,
+                        batchPoints: batchGained,
+                        searches: stats.performed,
+                        stagnant: stats.stagnant,
+                        stagnantLimit: tracker.stagnantLimit,
+                        balance: this.bot.userData.currentPoints
+                    })
                 } else {
                     this.bot.logger.debug(
                         isMobile,
@@ -249,9 +296,7 @@ export class BrowserSearch extends BaseActivity {
                 }
 
                 const stopAfterMeasure =
-                    stats.performed >= tracker.maxSearches ||
-                    tracker.done() ||
-                    stats.stagnant >= tracker.stagnantLimit
+                    stats.performed >= tracker.maxSearches || tracker.done() || stats.stagnant >= tracker.stagnantLimit
 
                 if (!stopAfterMeasure && stats.performed >= nextBurstPauseAt) {
                     const burstPauseMs = this.bot.utils.randomNumber(25000, 55000)
@@ -265,8 +310,19 @@ export class BrowserSearch extends BaseActivity {
                 }
             }
 
-            await tracker.measure()
+            const finalBatch = await tracker.measure()
             stats.totalGained = tracker.pointsGained
+            logSearchDiagnostic(this.bot, isMobile, {
+                stage: 'progress',
+                status: finalBatch === null ? 'unknown' : finalBatch > 0 ? 'credited' : 'no-credit',
+                reason: 'final-measurement',
+                pointsGained: stats.totalGained,
+                batchPoints: finalBatch,
+                searches: stats.performed,
+                stagnant: stats.stagnant,
+                stagnantLimit: tracker.stagnantLimit,
+                balance: this.bot.userData.currentPoints
+            })
             return stats
         } catch (error) {
             this.bot.logger.error(
@@ -385,7 +441,9 @@ export class BrowserSearch extends BaseActivity {
                         timeout: Math.min(5000, browserTimeout(this.bot, 'optional'))
                     })
                     closeClick = clicked.close
-                    const baseVisitMs = this.bot.utils.parseDuration(this.bot.config.searchSettings.searchResultVisitTime)
+                    const baseVisitMs = this.bot.utils.parseDuration(
+                        this.bot.config.searchSettings.searchResultVisitTime
+                    )
                     const totalVisitMs = this.bot.utils.randomNumber(
                         Math.max(4000, Math.round(baseVisitMs * 0.75)),
                         Math.max(8000, Math.round(baseVisitMs * 1.65))

@@ -3,6 +3,7 @@ import { completionCategory, isAccountCompletion, isRunCompletion } from '../../
 import { isActivationOutcome } from '../../rewards/shared/ActivationOutcome.js'
 import { activityKey, activityPointKey } from '../../rewards/shared/ActivityCompletion.js'
 import { activityReason } from '../../logging/LogMessage.js'
+import { SEARCH_DIAGNOSTIC_STAGES, SEARCH_DIAGNOSTIC_STATUSES } from '../../logging/SearchDiagnostic.js'
 
 /** @param {unknown} value @returns {value is DomainEvent} */
 export function isDomainEvent(value) {
@@ -13,6 +14,21 @@ export function isDomainEvent(value) {
     const numbers = (...keys) => keys.every(key => typeof data[key] === 'number' && Number.isFinite(data[key]))
     const optionalDate = value => value == null || (typeof value === 'string' && Number.isFinite(Date.parse(value)))
     switch (data.kind) {
+        case 'search-diagnostic':
+            return (
+                SEARCH_DIAGNOSTIC_STAGES.some(stage => stage === data.stage) &&
+                SEARCH_DIAGNOSTIC_STATUSES.some(status => status === data.status) &&
+                typeof data.reason === 'string' &&
+                data.reason.length <= 160 &&
+                ['source', 'errorCode'].every(key => data[key] === undefined || typeof data[key] === 'string') &&
+                ['attempt', 'searches', 'stagnant', 'stagnantLimit'].every(
+                    key => data[key] === undefined || (Number.isSafeInteger(data[key]) && Number(data[key]) >= 0)
+                ) &&
+                (data.quotaAvailable === undefined || typeof data.quotaAvailable === 'boolean') &&
+                ['earned', 'remaining', 'max', 'pointsGained', 'batchPoints', 'balance'].every(
+                    key => data[key] == null || nonNegative(key)
+                )
+            )
         case 'punchcard':
             return (
                 typeof data.offerId === 'string' &&
@@ -180,6 +196,7 @@ export function applyDomainEvent(state, entry, account) {
         return 'run-end'
     }
     if (!account) return null
+    if (data.kind === 'search-diagnostic') return 'search-diagnostic'
     if (data.kind === 'punchcard') {
         const cards = new Map((account.punchCards ?? []).map(card => [card.offerId, card]))
         const previous = cards.get(data.offerId)
