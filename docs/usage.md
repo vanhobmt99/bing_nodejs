@@ -312,6 +312,9 @@ Set these fields inside `workers`. Enabled workers run when supported by the acc
 
 Daily Check-In runs once per account before Read to Earn. A fresh streak/promotion check skips
 completed check-ins, including after a restart; completion is verified from refreshed state or balance.
+Browser Read to Earn supports both MSN mobile `csm-card` feeds and legacy desktop cards,
+selects article links rather than video/gallery links, and avoids rereading the same article.
+It falls back to the app API when browser reading is unavailable or credit remains unverified.
 Bonus claims are submitted only when a positive claimable total is known. Browser cards use flyout,
 `/earn` and `/dashboard` fallbacks; controls that still match ambiguously are left untouched.
 

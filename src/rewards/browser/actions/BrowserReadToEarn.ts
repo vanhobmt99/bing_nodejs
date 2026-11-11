@@ -15,8 +15,8 @@ const MAX_BROWSER_READS_PER_RUN = 20
 const MAX_FEED_SCROLLS = 8
 const MAX_UNVERIFIED_BROWSER_READS = 2
 const MSN_ORIGIN = 'https://www.msn.com'
-const FEED_CARD_SELECTOR = 'cs-responsive-card[role="article"]:not([media-type="video"])'
-const FEED_HEADING_SELECTOR = 'a#heading.heading[href]'
+const FEED_CARD_SELECTOR = 'cs-responsive-card[role="article"]:not([media-type="video"]), csm-card'
+const FEED_HEADING_SELECTOR = 'a.heading[href*="/ar-"]'
 
 type FeedArticle = {
     heading: Locator
@@ -272,7 +272,7 @@ export class BrowserReadToEarn extends BaseActivity {
                     (await heading.getAttribute('aria-label'))?.trim() ||
                     (await heading.textContent())?.trim() ||
                     'MSN article'
-                const key = id || this.normalizeArticleKey(href, page.url()) || title
+                const key = this.normalizeArticleKey(href, page.url()) || id || title
                 if (seenArticles.has(key)) continue
 
                 return { heading, key, title }
