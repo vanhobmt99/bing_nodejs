@@ -1,6 +1,6 @@
 {
     "sessionPath": "sessions",
-    "headless": true,
+    "headless": false,
     "clusters": 6,
     "rewardsMode": "browser",
     "errorDiagnostics": false,
@@ -45,15 +45,7 @@
         "parallelSearching": false,
         "clusterSearch": false,
         "useAccountLocale": true,
-        "queryEngines": [
-            "google",
-            "wikipedia",
-            "wikirandom",
-            "reddit",
-            "hackernews",
-            "rss.googleNews",
-            "local"
-        ],
+        "queryEngines": ["google", "wikipedia", "wikirandom", "reddit", "hackernews", "rss.googleNews", "local"],
         "searchResultVisitTime": "10sec",
         "searchDelay": {
             "min": "12sec",
@@ -73,14 +65,8 @@
     "consoleLogFilter": {
         "enabled": false,
         "mode": "whitelist",
-        "levels": [
-            "error",
-            "warn"
-        ],
-        "keywords": [
-            "starting account",
-            "Fraud_UserWarning_BotScore_UX"
-        ],
+        "levels": ["error", "warn"],
+        "keywords": ["starting account", "Fraud_UserWarning_BotScore_UX"],
         "regexPatterns": []
     },
     "proxy": {
@@ -103,24 +89,14 @@
             "topic": "",
             "token": "",
             "title": "Microsoft-Rewards-Script",
-            "tags": [
-                "bot",
-                "notify"
-            ],
+            "tags": ["bot", "notify"],
             "priority": 3
         },
         "webhookLogFilter": {
             "enabled": false,
             "mode": "whitelist",
-            "levels": [
-                "error"
-            ],
-            "keywords": [
-                "starting account",
-                "select number",
-                "collected",
-                "Fraud_UserWarning_BotScore_UX"
-            ],
+            "levels": ["error"],
+            "keywords": ["starting account", "select number", "collected", "Fraud_UserWarning_BotScore_UX"],
             "regexPatterns": []
         }
     }
