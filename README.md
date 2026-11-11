@@ -102,6 +102,6 @@ Bạn có thể bật (`true`) hoặc tắt (`false`) từng tác vụ cụ th�
 ---
 
 ## 🛡️ Điểm Mạnh Của Bản v5 Này
-- **Tự động đăng nhập SSO:** Phiên Mobile tự động kế thừa Cookie từ Desktop, giảm 99% tình trạng bắt xác minh OTP hoặc hỏi mật khẩu 2 lần.
+- **Lưu phiên đăng nhập riêng:** Mobile và Desktop khôi phục cookie của từng phiên riêng biệt. Lần đăng nhập Mobile đầu tiên có thể cần xác minh OTP; cookie Desktop không ghi đè phiên Mobile đã xác thực.
 - **Tự nhận diện giao diện tiếng Việt & khu vực VN:** Tự động đọc đúng 100% hạn ngạch tìm kiếm và trạng thái chuỗi ngày của tài khoản Việt Nam (`0 unknown`).
 - **Tối đa hóa Star Bonus:** Đạt đầy đủ các tiêu chuẩn "Genuine Search" để nhận trọn 2,100 điểm thưởng hàng tháng.

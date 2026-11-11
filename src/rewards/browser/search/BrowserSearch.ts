@@ -24,17 +24,13 @@ const MEASURE_EVERY_SEARCHES = 4
 
 const POINTS_MAX_SEARCHES = 100
 const POINTS_STAGNANT_LIMIT = 10
-const UNKNOWN_QUOTA_STAGNANT_LIMIT = 2
+const UNKNOWN_QUOTA_STAGNANT_LIMIT = 3
 
 export function searchStagnantLimit(quotaAvailable: boolean): number {
     return quotaAvailable ? POINTS_STAGNANT_LIMIT : UNKNOWN_QUOTA_STAGNANT_LIMIT
 }
 
-export function shouldCacheSearchCompletion(
-    quotaAvailable: boolean,
-    stagnant: number,
-    stagnantLimit: number
-): boolean {
+export function shouldCacheSearchCompletion(quotaAvailable: boolean, stagnant: number, stagnantLimit: number): boolean {
     return !quotaAvailable && stagnant >= stagnantLimit
 }
 
@@ -249,9 +245,7 @@ export class BrowserSearch extends BaseActivity {
                 }
 
                 const stopAfterMeasure =
-                    stats.performed >= tracker.maxSearches ||
-                    tracker.done() ||
-                    stats.stagnant >= tracker.stagnantLimit
+                    stats.performed >= tracker.maxSearches || tracker.done() || stats.stagnant >= tracker.stagnantLimit
 
                 if (!stopAfterMeasure && stats.performed >= nextBurstPauseAt) {
                     const burstPauseMs = this.bot.utils.randomNumber(25000, 55000)
@@ -385,7 +379,9 @@ export class BrowserSearch extends BaseActivity {
                         timeout: Math.min(5000, browserTimeout(this.bot, 'optional'))
                     })
                     closeClick = clicked.close
-                    const baseVisitMs = this.bot.utils.parseDuration(this.bot.config.searchSettings.searchResultVisitTime)
+                    const baseVisitMs = this.bot.utils.parseDuration(
+                        this.bot.config.searchSettings.searchResultVisitTime
+                    )
                     const totalVisitMs = this.bot.utils.randomNumber(
                         Math.max(4000, Math.round(baseVisitMs * 0.75)),
                         Math.max(8000, Math.round(baseVisitMs * 1.65))

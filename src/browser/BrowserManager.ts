@@ -3,7 +3,6 @@ import { BrowserFingerprintWithHeaders, FingerprintGenerator } from 'fingerprint
 
 import type { BotContext } from '../core/BotContext'
 import { clearStorageState, loadSession, saveFingerprint } from '../session/SessionStore'
-import { createSessionState } from '../session/SessionState'
 import { fingerprintMatchesLocale } from '../util/Locale'
 import { buildBrowserProxy } from '../../scripts/lib/proxy.cjs'
 import { UserAgentManager } from './UserAgent'
@@ -114,37 +113,10 @@ class BrowserManager {
             const reuseFingerprint =
                 savedFingerprint && profileMatches && fingerprintMatchesLocale(savedFingerprint, this.bot.accountLocale)
 
-            let restoredStorageState =
+            const restoredStorageState =
                 !fresh && session?.storageState && reuseFingerprint ? session.storageState : null
-
-            if (!fresh && this.bot.isMobile) {
-                const liveDesktopCookies =
-                    this.bot.mainDesktopPage && !this.bot.mainDesktopPage.isClosed()
-                        ? await this.bot.mainDesktopPage
-                              .context()
-                              .cookies()
-                              .catch(() => [])
-                        : []
-                const desktopCookies = liveDesktopCookies.length > 0 ? liveDesktopCookies : this.bot.cookies.desktop
-                if (desktopCookies.length > 0) {
-                    const mergedByKey = new Map<string, (typeof desktopCookies)[number]>()
-                    for (const cookie of restoredStorageState?.cookies ?? []) {
-                        mergedByKey.set(`${cookie.domain}|${cookie.path}|${cookie.name}`, cookie)
-                    }
-                    for (const cookie of desktopCookies) {
-                        mergedByKey.set(`${cookie.domain}|${cookie.path}|${cookie.name}`, cookie)
-                    }
-                    const seededState = createSessionState([...mergedByKey.values()])
-                    if (seededState.cookies.length > 0) {
-                        restoredStorageState = seededState
-                        this.bot.logger.info(
-                            this.bot.isMobile,
-                            'SESSION',
-                            `Seeding mobile session from authenticated desktop cookies | cookies=${seededState.cookies.length}`
-                        )
-                    }
-                }
-            }
+            // Desktop and mobile authentication must remain independent. Copying desktop
+            // cookies over a verified mobile session can leave searches signed in but uncredited.
 
             if (restoredStorageState && session) {
                 const ageMinutes = Math.max(0, Math.floor((Date.now() - session.updatedAt) / 60000))

@@ -22,13 +22,14 @@ export async function getBingSignInEvidence(page: Page, timeout: number): Promis
                     }
                 )._model
                 if (model && ('UserType' in model || 'UserEmail' in model || model.EnforceNotSignedIn === true)) {
+                    // The page model is authoritative: report an explicit signed-out result instead of polling
                     return model.EnforceNotSignedIn !== true &&
                         typeof model.UserType === 'string' &&
                         model.UserType.trim().toLowerCase() === 'msa' &&
                         typeof model.UserEmail === 'string' &&
                         model.UserEmail.trim()
                         ? 'page-model'
-                        : false
+                        : 'page-model-signed-out'
                 }
                 const avatar = document.querySelector<HTMLImageElement>('#id_p')
                 if (avatar?.getAttribute('src')?.trim()) return 'profile-avatar'
@@ -178,6 +179,24 @@ export class LoginSession {
                     await this.bot.browser.utils.dismissMessages(page).catch(() => undefined)
 
                     let evidence = await getBingSignInEvidence(page, browserTimeout(this.bot, 'optional'))
+                    if (evidence === 'page-model-signed-out') {
+                        // Bing itself reports a signed-out page; copied auth cookies must not override that
+                        this.bot.logger.warn(
+                            this.bot.isMobile,
+                            'LOGIN-BING',
+                            `Bing page reports signed out | loop=${i + 1}/${loopMax} | retrying Bing sign-in`
+                        )
+                        if (i < loopMax - 1) {
+                            await page
+                                .goto(url, {
+                                    waitUntil: 'domcontentloaded',
+                                    timeout: browserTimeout(this.bot, 'navigation')
+                                })
+                                .catch(() => undefined)
+                            await this.bot.utils.wait(1500)
+                        }
+                        continue
+                    }
                     if (!evidence) {
                         const bingCookies = await page
                             .context()
@@ -207,7 +226,11 @@ export class LoginSession {
                 await this.bot.utils.wait(1000)
             }
 
-            this.bot.logger.warn(this.bot.isMobile, 'LOGIN-BING', 'Could not verify Bing session')
+            this.bot.logger.warn(
+                this.bot.isMobile,
+                'LOGIN-BING',
+                `Could not verify Bing session${this.bot.isMobile ? ' | mobile searches may not earn points' : ''}`
+            )
         } catch (error) {
             this.bot.signal.throwIfAborted()
             this.bot.logger.warn(
