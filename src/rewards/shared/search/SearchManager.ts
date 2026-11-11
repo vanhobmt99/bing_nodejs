@@ -56,8 +56,18 @@ export class SearchManager {
             (!desktopQuota.available || desktopMissing > 0 || runOnZero)
 
         for (const [name, enabled, available, cachedComplete] of [
-            ['mobile-search-quota', this.bot.config.workers.doMobileSearch, quotas.mobile.available, mobileCachedComplete],
-            ['desktop-search-quota', this.bot.config.workers.doDesktopSearch, desktopQuota.available, desktopCachedComplete]
+            [
+                'mobile-search-quota',
+                this.bot.config.workers.doMobileSearch,
+                quotas.mobile.available,
+                mobileCachedComplete
+            ],
+            [
+                'desktop-search-quota',
+                this.bot.config.workers.doDesktopSearch,
+                desktopQuota.available,
+                desktopCachedComplete
+            ]
         ] as const) {
             if (enabled)
                 this.bot.recordActivity(
