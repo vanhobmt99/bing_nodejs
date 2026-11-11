@@ -1,0 +1,37 @@
+local.file_match "search_diagnostics" {
+	path_targets = [{
+		"__path__"   = "/var/log/rewards/search/events.jsonl",
+		"job"        = "microsoft-rewards-search",
+		"deployment" = sys.env("REWARDS_DEPLOYMENT"),
+	}]
+	sync_period = "5s"
+}
+
+loki.source.file "search_diagnostics" {
+	targets = local.file_match.search_diagnostics.targets
+	forward_to = [loki.process.search_diagnostics.receiver]
+}
+
+loki.process "search_diagnostics" {
+	stage.json {
+		expressions = { ts = "ts", device = "device", stage = "stage", level = "level" }
+	}
+	stage.timestamp {
+		source = "ts"
+		format = "RFC3339Nano"
+	}
+	stage.labels {
+		values = { device = "", stage = "", level = "" }
+	}
+	forward_to = [loki.write.search_diagnostics.receiver]
+}
+
+loki.write "search_diagnostics" {
+	endpoint {
+		url = sys.env("LOKI_URL")
+		basic_auth {
+			username = sys.env("LOKI_USERNAME")
+			password = sys.env("LOKI_TOKEN")
+		}
+	}
+}

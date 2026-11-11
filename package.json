@@ -27,7 +27,10 @@
         "manual-login": "node ./scripts/main/manualLogin.js",
         "open-session": "node ./scripts/main/browserSession.js",
         "check:api": "tsc -p tsconfig.control-api.json",
-        "check": "npm run build && npm run check:api && npm run lint && npm run format:check"
+        "monitoring:cloud:dashboard": "node scripts/main/setupGrafanaCloud.js",
+        "monitoring:cloud:logs-dashboard": "node scripts/main/setupGrafanaCloud.js --logs",
+        "test:monitoring": "node --test tests/monitoring.test.mjs tests/grafana-cloud.test.mjs tests/search-diagnostics.test.mjs",
+        "check": "npm run build && npm run check:api && npm run test:monitoring && npm run lint && npm run format:check"
     },
     "keywords": [
         "Bing Rewards",

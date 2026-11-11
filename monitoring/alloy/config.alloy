@@ -1,0 +1,27 @@
+prometheus.scrape "rewards" {
+	targets = [{
+		"__address__" = "microsoft-rewards-script:3010",
+		"deployment"  = sys.env("GRAFANA_CLOUD_DEPLOYMENT"),
+	}]
+	job_name        = "microsoft-rewards"
+	metrics_path    = "/metrics"
+	scrape_interval = "30s"
+
+	authorization {
+		type        = "Bearer"
+		credentials = sys.env("API_TOKEN")
+	}
+
+	forward_to = [prometheus.remote_write.grafana_cloud.receiver]
+}
+
+prometheus.remote_write "grafana_cloud" {
+	endpoint {
+		url = sys.env("GRAFANA_CLOUD_PROMETHEUS_URL")
+
+		basic_auth {
+			username = sys.env("GRAFANA_CLOUD_PROMETHEUS_USERNAME")
+			password = sys.env("GRAFANA_CLOUD_METRICS_TOKEN")
+		}
+	}
+}

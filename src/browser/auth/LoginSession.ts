@@ -8,6 +8,7 @@ import { configureMediaBlocking } from '../MediaBlocker'
 import { saveStorageState } from '../../session/SessionStore'
 import { createSessionState } from '../../session/SessionState'
 import { LOGIN_SELECTORS } from './LoginStateDetector'
+import { logSearchDiagnostic } from '../../logging/SearchDiagnostic'
 
 export async function getBingSignInEvidence(page: Page, timeout: number): Promise<string | null> {
     return page
@@ -109,6 +110,12 @@ export class LoginSession {
         const verification = browserMode ? await BrowserTaskPage.create(page) : undefined
         try {
             const verified = await this.verifyBingSession(verification?.page ?? page, account)
+            if (!verified && !sessionOnly)
+                logSearchDiagnostic(this.bot, this.bot.isMobile, {
+                    stage: 'signin',
+                    status: 'unverified',
+                    reason: 'continuing-without-verified-signin'
+                })
             if (sessionOnly && !verified) throw new Error('Could not verify the signed-in Bing session')
         } finally {
             await verification?.close()
@@ -140,6 +147,11 @@ export class LoginSession {
         const loopMax = 5
 
         this.bot.logger.debug(this.bot.isMobile, 'LOGIN-BING', 'Verifying Bing session')
+        logSearchDiagnostic(this.bot, this.bot.isMobile, {
+            stage: 'signin',
+            status: 'started',
+            reason: 'bing-signin-check'
+        })
 
         try {
             await page
@@ -181,6 +193,12 @@ export class LoginSession {
                     let evidence = await getBingSignInEvidence(page, browserTimeout(this.bot, 'optional'))
                     if (evidence === 'page-model-signed-out') {
                         // Bing itself reports a signed-out page; copied auth cookies must not override that
+                        logSearchDiagnostic(this.bot, this.bot.isMobile, {
+                            stage: 'signin',
+                            status: 'unverified',
+                            reason: 'page-model-signed-out',
+                            attempt: i + 1
+                        })
                         this.bot.logger.warn(
                             this.bot.isMobile,
                             'LOGIN-BING',
@@ -214,6 +232,13 @@ export class LoginSession {
                     )
 
                     if (evidence) {
+                        logSearchDiagnostic(this.bot, this.bot.isMobile, {
+                            stage: 'signin',
+                            status: 'verified',
+                            reason: 'bing-signin-evidence',
+                            source: evidence,
+                            attempt: i + 1
+                        })
                         this.bot.logger.debug(
                             this.bot.isMobile,
                             'LOGIN-BING',
@@ -222,6 +247,13 @@ export class LoginSession {
                         return true
                     }
                 }
+
+                logSearchDiagnostic(this.bot, this.bot.isMobile, {
+                    stage: 'signin',
+                    status: 'unverified',
+                    reason: atBingPage ? 'no-signin-evidence' : 'signin-redirect',
+                    attempt: i + 1
+                })
 
                 await this.bot.utils.wait(1000)
             }
@@ -233,6 +265,12 @@ export class LoginSession {
             )
         } catch (error) {
             this.bot.signal.throwIfAborted()
+            logSearchDiagnostic(this.bot, this.bot.isMobile, {
+                stage: 'signin',
+                status: 'failed',
+                reason: 'verification-error',
+                errorCode: error instanceof Error ? error.name : 'Error'
+            })
             this.bot.logger.warn(
                 this.bot.isMobile,
                 'LOGIN-BING',

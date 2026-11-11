@@ -1,0 +1,22 @@
+services:
+    alloy-logs:
+        image: grafana/alloy:v1.21.3
+        restart: unless-stopped
+        command: ['run', '--storage.path=/var/lib/alloy/data', '/etc/alloy/logs.alloy']
+        environment:
+            REWARDS_DEPLOYMENT: '${GRAFANA_CLOUD_DEPLOYMENT:-rewards}'
+            LOKI_URL: '${GRAFANA_CLOUD_LOKI_URL:?Set the Grafana Cloud Loki push URL in .env}'
+            LOKI_USERNAME: '${GRAFANA_CLOUD_LOKI_USERNAME:?Set the Grafana Cloud Loki username in .env}'
+            LOKI_TOKEN: '${GRAFANA_CLOUD_LOGS_TOKEN:?Set a Grafana Cloud token with logs:write scope in .env}'
+        volumes:
+            - ./monitoring/alloy/logs.alloy:/etc/alloy/logs.alloy:ro
+            - ./diagnostics:/var/log/rewards:ro
+            - alloy-logs-data:/var/lib/alloy/data
+        depends_on:
+            microsoft-rewards-script:
+                condition: service_healthy
+        security_opt:
+            - no-new-privileges:true
+
+volumes:
+    alloy-logs-data:

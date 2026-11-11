@@ -4,6 +4,7 @@ export const API_ENDPOINTS = [
     'GET /status',
     'GET /plan',
     'GET /points',
+    'GET /metrics',
     'GET /logs',
     'GET /errors',
     'GET /history',

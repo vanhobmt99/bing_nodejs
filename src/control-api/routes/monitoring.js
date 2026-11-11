@@ -3,6 +3,7 @@ import { validateConfig, readConfig } from '../configEditor.js'
 import { loadAccounts, mergeAccountStats } from '../accounts.js'
 import { toHistoryRecord } from '../history.js'
 import { API_ENDPOINTS } from '../endpoints.js'
+import { renderMetrics } from '../metrics.js'
 
 const DOCKER_LOG_LINE_RE =
     /^\[[^\]]+\] \[MAIN\] \[(?:DEBUG|INFO|WARN|ERROR)\] MAIN \[(?:ENTRYPOINT|CONFIG-SYNC|CONFIG-OVERRIDES|SCHEDULE|RUN_DAILY\.SH)\] |^\[(?:entrypoint|config-sync|config-overrides)\]\s|^\[[^\]]+\]\s\[run_daily\.sh\]\s/
@@ -66,6 +67,20 @@ export function createMonitoringRoutes({ projectRoot, pm, name, version, token, 
 
         if (method === 'GET' && pathname === '/points') {
             return sendJson(res, 200, pm.getPoints())
+        }
+
+        if (method === 'GET' && pathname === '/metrics') {
+            const metrics = renderMetrics({
+                accounts: loadAccounts(),
+                history: pm.getHistory().map(toHistoryRecord),
+                status: pm.getStatus(),
+                startedAt
+            })
+            res.writeHead(200, {
+                'Content-Type': 'text/plain; version=0.0.4; charset=utf-8',
+                'Cache-Control': 'no-store'
+            })
+            return res.end(metrics)
         }
 
         if (method === 'GET' && pathname === '/logs') {
