@@ -9,8 +9,8 @@
     "continueOnBotWarning": true,
     "skipNonPointTasks": true,
     "accountDelay": {
-        "min": "1min",
-        "max": "2min"
+        "min": "2min",
+        "max": "4min"
     },
     "taskDelay": {
         "min": "15sec",
@@ -58,7 +58,7 @@
     },
     "experimental": {
         "blockMedia": false,
-        "edgeBrowsing": true,
+        "edgeBrowsing": false,
         "browserSearchApiReport": false
     },
     "debugLogs": false,
