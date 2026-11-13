@@ -239,7 +239,7 @@ async function runPlatform({ account, config, dbPath, platform, fresh }) {
     const { fingerprintOperatingSystem, browserLocaleArgs, requireGraphicalDisplay } =
         await import('../../dist/browser/BrowserRuntime.js')
     requireGraphicalDisplay()
-    const { getBingSignInEvidence } = await import('../../dist/browser/auth/LoginSession.js')
+    const { getBingSignInEvidence, isSignedOutBingEvidence } = await import('../../dist/browser/auth/LoginSession.js')
     const { URLs } = await import('../../dist/constants/urls.js')
     const userAgentManager = new UserAgentManager({ appIdentity: createAppIdentity(account.email) })
     const profileMatches = stored.fingerprint && userAgentManager.matchesFingerprint(stored.fingerprint, isMobile)
@@ -341,7 +341,8 @@ async function runPlatform({ account, config, dbPath, platform, fresh }) {
 
         log('INFO', 'Verifying the signed-in Bing session before saving...')
         await page.goto(URLs.auth.bingSignIn, { waitUntil: 'domcontentloaded', timeout: globalTimeout })
-        if (!(await getBingSignInEvidence(page, globalTimeout))) {
+        const bingEvidence = await getBingSignInEvidence(page, globalTimeout)
+        if (!bingEvidence || isSignedOutBingEvidence(bingEvidence)) {
             throw new Error('Could not verify the signed-in Bing session; existing saved sessions were kept')
         }
         if (interrupted) throw new Error('Manual login was interrupted')

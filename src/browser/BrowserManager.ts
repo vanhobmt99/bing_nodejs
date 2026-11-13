@@ -3,6 +3,7 @@ import { BrowserFingerprintWithHeaders, FingerprintGenerator } from 'fingerprint
 
 import type { BotContext } from '../core/BotContext'
 import { clearStorageState, loadSession, saveFingerprint } from '../session/SessionStore'
+import { hasDesktopBingCookieSignature, stripDesktopBingTrackingCookies } from '../session/SessionState'
 import { fingerprintMatchesLocale } from '../util/Locale'
 import { buildBrowserProxy } from '../../scripts/lib/proxy.cjs'
 import { UserAgentManager } from './UserAgent'
@@ -163,6 +164,22 @@ class BrowserManager {
             }
 
             const screen = fingerprint.fingerprint.screen
+            let effectiveStorageState = restoredStorageState
+            if (
+                this.bot.isMobile &&
+                effectiveStorageState &&
+                hasDesktopBingCookieSignature(effectiveStorageState.cookies, screen.width, screen.devicePixelRatio)
+            ) {
+                const stripped = stripDesktopBingTrackingCookies(effectiveStorageState.cookies)
+                if (stripped.removed > 0) {
+                    effectiveStorageState = { ...effectiveStorageState, cookies: stripped.cookies }
+                    this.bot.logger.warn(
+                        this.bot.isMobile,
+                        'SESSION',
+                        `Stripped ${stripped.removed} desktop-flavored Bing tracking cookie(s) from restored mobile session`
+                    )
+                }
+            }
 
             const context = await newRewardsBrowserContext(
                 browser,
@@ -170,7 +187,7 @@ class BrowserManager {
                 {
                     permissions: [],
                     ignoreHTTPSErrors: ignoreCertificateErrors,
-                    ...(restoredStorageState ? { storageState: restoredStorageState } : {}),
+                    ...(effectiveStorageState ? { storageState: effectiveStorageState } : {}),
                     ...(this.bot.isMobile
                         ? {
                               isMobile: true,

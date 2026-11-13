@@ -5,7 +5,7 @@ import { buildCookieHeader, filterCookiesForUrl, mergeSetCookies } from '../netw
 import type { HttpRequestConfig, HttpResponse } from '../network/HttpClient'
 import type { RequestHeaders } from '../network/RequestHeaders'
 import { saveStorageState } from '../session/SessionStore'
-import { createSessionState, filterSessionCookies } from '../session/SessionState'
+import { createSessionState, filterSessionCookies, isNonRewardsBingDomain } from '../session/SessionState'
 import { synchronizeRewardsCookies } from './RewardsBrowserContext'
 
 const MAX_HOPS = 12
@@ -15,6 +15,13 @@ const HOP_DROPPED_HEADERS = new Set(['cookie', 'origin', 'referer', 'accept', 'c
 export interface SessionResponse<T> extends HttpResponse<T> {
     url: string
     hops: string[]
+}
+
+function hasDesktopAppUserAgent(headers: RequestHeaders): boolean {
+    return Object.entries(headers).some(
+        ([name, value]) =>
+            name.toLowerCase() === 'user-agent' && typeof value === 'string' && /MSRewards\/Desktop/i.test(value)
+    )
 }
 
 function headerValue(headers: Record<string, string | string[]>, name: string): string | undefined {
@@ -102,7 +109,11 @@ export class BrowserSessionClient {
                 response = failed
             }
             hops.push(`${response.status}@${new URL(url).hostname}`)
-            await this.applyResponseCookies(url, response.headers['set-cookie'])
+            await this.applyResponseCookies(
+                url,
+                response.headers['set-cookie'],
+                this.bot.isMobile && hasDesktopAppUserAgent(headers)
+            )
 
             const location = headerValue(response.headers, 'location')
             const previous = new URL(url)
@@ -183,20 +194,42 @@ export class BrowserSessionClient {
         }
     }
 
-    async applyResponseCookies(requestUrl: string, setCookieHeader?: string[] | string): Promise<void> {
+    async applyResponseCookies(
+        requestUrl: string,
+        setCookieHeader?: string[] | string,
+        excludeNonRewardsBing = false
+    ): Promise<void> {
         const current = this.bot.isMobile ? this.bot.cookies.mobile : this.bot.cookies.desktop
         const merged = mergeSetCookies(current, requestUrl, setCookieHeader)
         if (!merged.changed) return
 
+        const nextCookies = excludeNonRewardsBing
+            ? [
+                  ...current.filter(cookie => isNonRewardsBingDomain(cookie.domain)),
+                  ...merged.cookies.filter(cookie => !isNonRewardsBingDomain(cookie.domain))
+              ]
+            : merged.cookies
+        const cookiesChanged =
+            nextCookies.length !== current.length ||
+            nextCookies.some(
+                cookie =>
+                    !current.some(
+                        old =>
+                            this.cookieKey(old) === this.cookieKey(cookie) &&
+                            this.cookieState(old) === this.cookieState(cookie)
+                    )
+            )
+        if (!cookiesChanged) return
+
         const page = this.activePage()
         if (page) {
             const removed = current.filter(
-                cookie => !merged.cookies.some(next => this.cookieKey(next) === this.cookieKey(cookie))
+                cookie => !nextCookies.some(next => this.cookieKey(next) === this.cookieKey(cookie))
             )
             for (const cookie of removed) {
                 await page.context().clearCookies({ name: cookie.name, domain: cookie.domain, path: cookie.path })
             }
-            const changed = merged.cookies.filter(
+            const changed = nextCookies.filter(
                 cookie =>
                     !current.some(
                         old =>
@@ -207,7 +240,7 @@ export class BrowserSessionClient {
             if (changed.length) await page.context().addCookies(changed)
             this.updateCache(await page.context().cookies(), 'COOKIE-SYNC')
         } else {
-            this.updateCache(merged.cookies, 'COOKIE-SYNC')
+            this.updateCache(nextCookies, 'COOKIE-SYNC')
         }
 
         const email = this.bot.currentAccountEmail

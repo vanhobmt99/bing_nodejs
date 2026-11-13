@@ -2,7 +2,7 @@ import type { Browser, BrowserContext, BrowserContextOptions, Cookie, Page } fro
 import type { BrowserFingerprintWithHeaders } from 'fingerprint-generator'
 import { FingerprintInjector } from 'fingerprint-injector'
 import { applyDesktopAppFingerprint, isDesktopAppFingerprint } from './RewardsAppProfile'
-import { createSessionState, filterSessionCookies } from '../session/SessionState'
+import { createSessionState, filterSessionCookies, isNonRewardsBingDomain } from '../session/SessionState'
 import { URLs } from '../constants/urls'
 import { closeBrowserPage, isPageAvailableForRequest } from './BrowserPageRequests'
 import { trackBrowserPage } from './BrowserPageHealth'
@@ -170,11 +170,26 @@ async function applyCookieChanges(
     return [...snapshot.values()]
 }
 
+export function filterTaskCookieChangesForSource(
+    changes: Map<string, Cookie | undefined>,
+    isolateMobileBing: boolean
+): Map<string, Cookie | undefined> {
+    const filtered = new Map(changes)
+    if (!isolateMobileBing) return filtered
+    for (const key of filtered.keys()) {
+        // Desktop-app contexts visit Rewards and .bing.com with non-mobile headers;
+        // syncing non-Rewards .bing.com cookies back into a mobile context prevents mobile search crediting.
+        if (isNonRewardsBingDomain(key.split('|', 1)[0] ?? '')) filtered.delete(key)
+    }
+    return filtered
+}
+
 export async function synchronizeRewardsCookies(context: BrowserContext): Promise<void> {
     const source = contextOwners.get(context) ?? context
     await pendingContexts.get(source)
     const session = taskContexts.get(source)
     if (!session) return
+    const isolateMobileBing = Boolean(profiles.get(source)?.options.isMobile)
     const job = session.syncing
         .catch(() => undefined)
         .then(async () => {
@@ -185,8 +200,9 @@ export async function synchronizeRewardsCookies(context: BrowserContext): Promis
             const sourceChanges = cookieChanges(session.sourceCookies, sourceCookies)
             const taskChanges = cookieChanges(session.taskCookies, taskCookies)
             for (const key of sourceChanges.keys()) taskChanges.delete(key)
+            const sourceTargetChanges = filterTaskCookieChangesForSource(taskChanges, isolateMobileBing)
             const [syncedSource, syncedTask] = await Promise.all([
-                applyCookieChanges(source, sourceCookies, taskChanges),
+                applyCookieChanges(source, sourceCookies, sourceTargetChanges),
                 applyCookieChanges(session.context, taskCookies, sourceChanges)
             ])
             session.sourceCookies = syncedSource

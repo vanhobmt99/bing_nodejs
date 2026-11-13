@@ -10,7 +10,11 @@ import { createSessionState } from '../../session/SessionState'
 import { LOGIN_SELECTORS } from './LoginStateDetector'
 import { logSearchDiagnostic } from '../../logging/SearchDiagnostic'
 
-export async function getBingSignInEvidence(page: Page, timeout: number): Promise<string | null> {
+export function isSignedOutBingEvidence(evidence: string | null): boolean {
+    return evidence === 'page-model-signed-out' || evidence === 'mobile-hamburger-signed-out'
+}
+
+async function probeBingSignInDom(page: Page, timeout: number): Promise<string | null> {
     return page
         .waitForFunction(
             profileSelector => {
@@ -36,18 +40,49 @@ export async function getBingSignInEvidence(page: Page, timeout: number): Promis
                 if (avatar?.getAttribute('src')?.trim()) return 'profile-avatar'
                 const profile = document.querySelector(profileSelector)
                 const name = profile?.textContent?.trim()
-                if (!name || /^(?:sign|log)\s*in$/i.test(name)) return false
-                const link = profile?.closest<HTMLAnchorElement>('a[href]')
-                if (link) {
-                    const target = new URL(link.href, location.href)
-                    if (
-                        target.pathname.toLowerCase() === '/fd/auth/signin' ||
-                        target.hostname === 'login.live.com' ||
-                        target.hostname === 'login.microsoftonline.com'
-                    )
-                        return false
+                if (name && !/^(?:sign|log)\s*in$/i.test(name)) {
+                    const link = profile?.closest<HTMLAnchorElement>('a[href]')
+                    if (link) {
+                        const target = new URL(link.href, location.href)
+                        if (
+                            target.pathname.toLowerCase() === '/fd/auth/signin' ||
+                            target.hostname === 'login.live.com' ||
+                            target.hostname === 'login.microsoftonline.com'
+                        )
+                            return false
+                    }
+                    return 'profile-dom'
                 }
-                return 'profile-dom'
+
+                // Mobile Bing omits window._model/#id_p/#id_n and renders #hb_n/#hb_p/#hb_s after clicking #mHamburger
+                const mobileAvatar = document.querySelector<HTMLImageElement>('#hb_p')
+                if (mobileAvatar?.getAttribute('src')?.trim()) return 'mobile-hamburger-avatar'
+                const mobileProfile = document.querySelector('#hb_n')
+                const mobileName = mobileProfile?.textContent?.trim()
+                if (mobileName && !/^(?:sign|log)\s*in$/i.test(mobileName)) {
+                    const mobileLink = mobileProfile?.closest<HTMLAnchorElement>('a[href]')
+                    if (mobileLink) {
+                        const target = new URL(mobileLink.href, location.href)
+                        if (
+                            target.pathname.toLowerCase() === '/fd/auth/signin' ||
+                            target.hostname === 'login.live.com' ||
+                            target.hostname === 'login.microsoftonline.com'
+                        )
+                            return 'mobile-hamburger-signed-out'
+                    }
+                    return 'mobile-hamburger'
+                }
+                const mobileSignIn = document.querySelector('#hb_s')
+                const signInText = mobileSignIn?.textContent?.trim()
+                if (mobileSignIn && (!signInText || /^(?:sign|log)\s*in$/i.test(signInText))) {
+                    return 'mobile-hamburger-signed-out'
+                }
+
+                const hamburger = document.querySelector<HTMLElement>('#mHamburger')
+                if (hamburger && (hamburger.offsetParent !== null || hamburger.getClientRects().length > 0)) {
+                    return 'mobile-hamburger-closed'
+                }
+                return false
             },
             LOGIN_SELECTORS.bingProfile,
             { timeout, polling: 250 }
@@ -61,6 +96,31 @@ export async function getBingSignInEvidence(page: Page, timeout: number): Promis
             }
         })
         .catch(() => null)
+}
+
+export async function getBingSignInEvidence(page: Page, timeout: number): Promise<string | null> {
+    const evidence = await probeBingSignInDom(page, timeout)
+    if (evidence !== 'mobile-hamburger-closed') return evidence
+
+    const hamburger = page.locator('#mHamburger').first()
+    const opened = await hamburger
+        .click({ timeout: Math.min(timeout, 3000) })
+        .then(() => true)
+        .catch(() => false)
+    if (!opened) return null
+
+    try {
+        const mobileEvidence = await probeBingSignInDom(page, Math.min(timeout, 3000))
+        return mobileEvidence === 'mobile-hamburger-closed' ? null : mobileEvidence
+    } finally {
+        await page.keyboard.press('Escape').catch(() => undefined)
+        const stillOpen = await page
+            .locator('#hb_n, #hb_s')
+            .first()
+            .isVisible()
+            .catch(() => false)
+        if (stillOpen) await hamburger.click({ timeout: 1000 }).catch(() => undefined)
+    }
 }
 
 export class LoginSession {
@@ -191,18 +251,18 @@ export class LoginSession {
                     await this.bot.browser.utils.dismissMessages(page).catch(() => undefined)
 
                     let evidence = await getBingSignInEvidence(page, browserTimeout(this.bot, 'optional'))
-                    if (evidence === 'page-model-signed-out') {
+                    if (isSignedOutBingEvidence(evidence)) {
                         // Bing itself reports a signed-out page; copied auth cookies must not override that
                         logSearchDiagnostic(this.bot, this.bot.isMobile, {
                             stage: 'signin',
                             status: 'unverified',
-                            reason: 'page-model-signed-out',
+                            reason: evidence ?? 'page-model-signed-out',
                             attempt: i + 1
                         })
                         this.bot.logger.warn(
                             this.bot.isMobile,
                             'LOGIN-BING',
-                            `Bing page reports signed out | loop=${i + 1}/${loopMax} | retrying Bing sign-in`
+                            `Bing page reports signed out | source=${evidence} | loop=${i + 1}/${loopMax} | retrying Bing sign-in`
                         )
                         if (i < loopMax - 1) {
                             await page
