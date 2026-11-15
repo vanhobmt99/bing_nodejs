@@ -20,6 +20,10 @@ import {
 } from '../parsers/PunchCardPageParser'
 import { BrowserRewardNavigator } from './BrowserRewardNavigator'
 import { observePunchCard } from '../../shared/PunchCardProgress'
+import { HttpError, isTransientNetworkError } from '../../../network/HttpError'
+
+const QUEST_LOAD_ATTEMPTS = 3
+const PUNCHCARD_RETRY_DELAY_MS = 10000
 
 export class BrowserPunchCards extends BaseActivity {
     private readonly navigator = new BrowserRewardNavigator(this.bot)
@@ -48,17 +52,37 @@ export class BrowserPunchCards extends BaseActivity {
             this.bot.logger.info(this.bot.isMobile, 'PUNCHCARD-BROWSER', `Found ${parents.length} incomplete quest(s)`)
 
             task = await BrowserTaskPage.createRewards(sourcePage)
+            const retry: RenderedPunchCard[] = []
             for (const parent of parents) {
                 try {
                     await this.solveParent(task.page, parent)
                 } catch (error) {
-                    this.bot.recordActivity('punchcard', activityFailure(error, parent.offerId))
                     this.bot.signal.throwIfAborted()
-                    this.bot.logger.error(
-                        this.bot.isMobile,
-                        'PUNCHCARD-BROWSER',
-                        `Quest failed | offerId=${parent.offerId} | ${String(error)}`
-                    )
+                    if (isTransientNetworkError(error)) {
+                        retry.push(parent)
+                        this.bot.logger.warn(
+                            this.bot.isMobile,
+                            'PUNCHCARD-BROWSER',
+                            `Quest hit a transient network error; it will be retried after the other quests | offerId=${parent.offerId} | ${String(error).split(/\r?\n/, 1)[0]}`
+                        )
+                        continue
+                    }
+                    this.recordQuestFailure(parent, error)
+                }
+            }
+            if (retry.length) {
+                await this.bot.utils.wait(PUNCHCARD_RETRY_DELAY_MS)
+                if (task.page.isClosed()) {
+                    await task.close()
+                    task = await BrowserTaskPage.createRewards(sourcePage)
+                }
+                for (const parent of retry) {
+                    try {
+                        await this.solveParent(task.page, parent)
+                    } catch (error) {
+                        this.bot.signal.throwIfAborted()
+                        this.recordQuestFailure(parent, error)
+                    }
                 }
             }
         } catch (error) {
@@ -71,6 +95,49 @@ export class BrowserPunchCards extends BaseActivity {
             )
         } finally {
             await task?.close()
+        }
+    }
+
+    private recordQuestFailure(parent: RenderedPunchCard, error: unknown): void {
+        this.bot.recordActivity('punchcard', activityFailure(error, parent.offerId))
+        this.bot.logger.error(
+            this.bot.isMobile,
+            'PUNCHCARD-BROWSER',
+            `Quest failed | offerId=${parent.offerId} | ${String(error)}`
+        )
+    }
+
+    private async gotoQuest(page: Page, questUrl: string): Promise<void> {
+        for (let attempt = 1; ; attempt++) {
+            this.bot.signal.throwIfAborted()
+            try {
+                const response = await page.goto(questUrl, {
+                    waitUntil: 'domcontentloaded',
+                    timeout: browserTimeout(this.bot, 'navigation')
+                })
+                if (!response) {
+                    throw Object.assign(new Error('Quest returned no response'), { code: 'NO_RESPONSE' })
+                }
+                if (!response.ok()) {
+                    const status = response.status()
+                    throw new HttpError(
+                        status,
+                        { status, headers: response.headers() },
+                        `Quest returned status ${status}`
+                    )
+                }
+                return
+            } catch (error) {
+                this.bot.signal.throwIfAborted()
+                if (attempt >= QUEST_LOAD_ATTEMPTS || page.isClosed() || !isTransientNetworkError(error)) throw error
+                const delayMs = 2000 * attempt
+                this.bot.logger.warn(
+                    this.bot.isMobile,
+                    'PUNCHCARD-BROWSER',
+                    `Quest page load failed; retrying | attempt=${attempt}/${QUEST_LOAD_ATTEMPTS} | retryInMs=${delayMs} | ${String(error).split(/\r?\n/, 1)[0]}`
+                )
+                await this.bot.utils.wait(delayMs)
+            }
         }
     }
 
@@ -117,11 +184,7 @@ export class BrowserPunchCards extends BaseActivity {
         await page.bringToFront()
         const questUrl = URLs.rewards.quest(parent.offerId)
         if (refresh || page.url().split(/[?#]/)[0] !== questUrl) {
-            const response = await page.goto(questUrl, {
-                waitUntil: 'domcontentloaded',
-                timeout: browserTimeout(this.bot, 'navigation')
-            })
-            if (!response?.ok()) throw new Error(`Quest returned status ${response?.status() ?? 'unknown'}`)
+            await this.gotoQuest(page, questUrl)
         }
         await this.bot.browser.utils.dismissMessages(page)
         await page.locator('main').waitFor({ state: 'attached', timeout: browserTimeout(this.bot) })
@@ -216,7 +279,18 @@ export class BrowserPunchCards extends BaseActivity {
                 )
                 continue
             }
-            const control = await this.resolveStepControl(page, child)
+            const control = await this.resolveStepControl(page, child).catch((error: unknown) => {
+                if (!(error instanceof ActivitySkipError)) throw error
+                // Skip only this step; the remaining steps of the quest can still be completed.
+                this.bot.recordActivity('punchcard-child', activityFailure(error, key))
+                this.bot.logger.warn(
+                    this.bot.isMobile,
+                    'PUNCHCARD-BROWSER',
+                    `Step skipped; continuing with the next step | quest=${parent.offerId} | step="${child.title}" | ${error.message}`
+                )
+                return undefined
+            })
+            if (control === undefined) continue
             if (!control) {
                 this.bot.recordActivity(
                     'punchcard-child',

@@ -310,3 +310,51 @@ test('selectUniquePunchCardStepCandidate resolves shared control labels without 
         { status: 'ambiguous' }
     )
 })
+
+test('selectEarnSweepCandidates retries failed, unconfirmed, and newly discovered earn tasks while skipping deliberate skips', async () => {
+    const { selectEarnSweepCandidates } = await import('../dist/rewards/browser/EarnSweep.js')
+
+    const makeOffer = offerId => ({
+        offerId,
+        name: offerId,
+        title: `Task ${offerId}`,
+        description: '',
+        destinationUrl: `https://www.bing.com/search?q=${offerId}`,
+        promotionType: 'urlreward',
+        promotionSubtype: '',
+        attributes: {},
+        complete: false,
+        priority: 0,
+        isHidden: false,
+        pointProgress: 0,
+        pointProgressKnown: true,
+        pointProgressMax: 10,
+        activityProgress: 0,
+        activityProgressMax: 1,
+        exclusiveLockedFeatureStatus: ''
+    })
+
+    const statuses = new Map([
+        ['failed-offer', 'failed'],
+        ['unconfirmed-offer', 'unconfirmed'],
+        ['skipped-offer', 'skipped'],
+        ['confirmed-offer', 'confirmed']
+    ])
+
+    const candidates = selectEarnSweepCandidates(
+        [
+            makeOffer('failed-offer'),
+            makeOffer('unconfirmed-offer'),
+            makeOffer('skipped-offer'),
+            makeOffer('confirmed-offer'),
+            makeOffer('new-offer'),
+            makeOffer('new-offer')
+        ],
+        offerId => statuses.get(offerId)
+    )
+
+    assert.deepEqual(
+        candidates.map(item => item.offerId),
+        ['failed-offer', 'unconfirmed-offer', 'new-offer']
+    )
+})
