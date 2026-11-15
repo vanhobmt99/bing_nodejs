@@ -1,4 +1,4 @@
-import { HttpError } from '../network/HttpError'
+import { HttpError, isTransientNetworkError } from '../network/HttpError'
 import type { BrowserContext, Page, Request, Response } from 'patchright'
 
 import type { BotContext } from '../core/BotContext'
@@ -90,13 +90,42 @@ export class BrowserRequestClient {
                 )
                     await this.bot.browser.utils.dismissMessages(page)
                 const source = activePage?.context()
-                const fetch = async () => {
+                const maxAttempts = config.method === 'GET' ? 3 : 1
+                const deadline = config.timeout ? Date.now() + config.timeout : undefined
+                const fetchOnce = async (): Promise<BrowserRequestResponse<T>> => {
                     this.bot.signal.throwIfAborted()
+                    const attemptConfig = deadline ? { ...config, timeout: Math.max(1, deadline - Date.now()) } : config
                     await synchronizeRewardsCookies(page.context())
                     try {
-                        return await this.fetchUsingPage<T>(config, page)
+                        return await this.fetchUsingPage<T>(attemptConfig, page)
                     } finally {
                         await synchronizeRewardsCookies(page.context())
+                    }
+                }
+                const fetch = async (): Promise<BrowserRequestResponse<T>> => {
+                    for (let attempt = 1; ; attempt++) {
+                        try {
+                            return await fetchOnce()
+                        } catch (error) {
+                            this.bot.signal.throwIfAborted()
+                            const delayMs = 1000 * attempt
+                            const withinDeadline = !deadline || Date.now() + delayMs < deadline
+                            if (
+                                attempt >= maxAttempts ||
+                                page.isClosed() ||
+                                !withinDeadline ||
+                                !isTransientNetworkError(error)
+                            )
+                                throw error
+                            this.bot.logger.warn(
+                                this.bot.isMobile,
+                                'BROWSER-FETCH',
+                                `In-page GET failed transiently; retrying | url=${config.url}` +
+                                    ` | attempt=${attempt}/${maxAttempts} | retryInMs=${delayMs}` +
+                                    ` | ${error instanceof Error ? error.message : String(error)}`
+                            )
+                            await this.bot.utils.wait(delayMs)
+                        }
                     }
                 }
                 if (source && this.helperPagesByContext.get(source)?.get(targetOrigin) === page) {
@@ -261,10 +290,17 @@ export class BrowserRequestClient {
             }))
             .finally(async () => {
                 signal.removeEventListener('abort', abort)
-                fetchPage.off('requestfailed', onFailed)
-                fetchPage.off('response', onResponse)
                 await controller.dispose().catch(() => undefined)
             })
+
+        try {
+            if (!result.ok && !networkError && !result.blockedDirective && !signal.aborted) {
+                await new Promise<void>(resolve => setTimeout(resolve, 20))
+            }
+        } finally {
+            fetchPage.off('requestfailed', onFailed)
+            fetchPage.off('response', onResponse)
+        }
 
         signal.throwIfAborted()
         if (result.ok) {
@@ -296,7 +332,15 @@ export class BrowserRequestClient {
                 ` | online=${result.online ?? 'unknown'} | networkError=${networkError ?? 'unavailable'}` +
                 ` | redirect=${redirect ?? 'none-observed'} | blockedDirective=${result.blockedDirective ?? 'none-observed'}`
         )
-        throw new Error(`In-page fetch failed for ${config.url}: ${result.error}`)
+        const detail = networkError ? ` (${networkError})` : ''
+        const transientFetch =
+            !result.blockedDirective && !networkError && /^(?:TypeError:\s*)?Failed to fetch$/i.test(result.error)
+        throw Object.assign(new Error(`In-page fetch failed for ${config.url}: ${result.error}${detail}`), {
+            ...(networkError ? { networkError } : {}),
+            ...(result.errorName === 'TimeoutError' ? { name: 'TimeoutError' } : {}),
+            ...(result.blockedDirective ? { blockedDirective: result.blockedDirective } : {}),
+            ...(transientFetch ? { transientFetch: true } : {})
+        })
     }
 
     async closeHelperPages(context: BrowserContext): Promise<void> {

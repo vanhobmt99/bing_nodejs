@@ -87,7 +87,7 @@ Point accounting distinguishes observed balances, verified credit, activity conf
 
 ## Build and Tests
 
-`npm run build` removes `dist`, compiles TypeScript as CommonJS, and copies `src/data` and the ESM `src/control-api` into it. The copied Control API retains its own `package.json`. JavaScript scripts also have an ESM package boundary; shared `.cjs` helpers bridge module formats.
+`npm run build` removes `dist`, compiles TypeScript as CommonJS, and copies `src/data` and the ESM `src/control-api` into it. The copied Control API retains its own `package.json`. JavaScript scripts also have an ESM package boundary; shared `.cjs` helpers bridge module formats. Focused rewards behavior regressions run through `npm run test:rewards` after a build.
 
 `npm run check:api` separately checks Control API JavaScript without emitting files. Existing tests use Node's test runner and import a mix of generated runtime modules and source script helpers. Build before running tests that depend on `dist`.
 

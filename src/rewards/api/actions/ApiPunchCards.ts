@@ -2,7 +2,7 @@ import { ClaimReward } from './ClaimReward'
 import { activityFailure, activityResult } from '../../shared/ActivityResult'
 import { URLs } from '../../../constants/urls'
 import { BaseActivity } from '../../shared/activities/BaseActivity'
-import { isSkippedOffer } from '../../shared/PromotionEligibility'
+import { isEligiblePunchCard, isSkippedOffer } from '../../shared/PromotionEligibility'
 import { runTaskWithDelay } from '../../shared/TaskPacing'
 import type { ParentQuest, QuestChild } from '../../shared/parsers/RewardsPageParser'
 import type { BasePromotion, RewardsState, PunchCard } from '../../types/RewardsState'
@@ -78,10 +78,7 @@ export class ApiPunchCards extends BaseActivity {
                 : undefined
             observePunchCard(this.bot, parent, steps, card?.parentPromotion)
         }
-        const pending = parents.filter(parent => {
-            if (parent.complete || isSkippedOffer(parent.offerId)) return false
-            return !this.bot.config.skipNonPointTasks || parent.pointProgressMax > 0
-        })
+        const pending = parents.filter(parent => isEligiblePunchCard(parent, this.bot.config.skipNonPointTasks))
 
         if (!pending.length) {
             this.bot.logger.debug(this.bot.isMobile, 'PUNCHCARD', 'No actionable quests')

@@ -28,7 +28,7 @@ npm ci --include=dev --ignore-scripts
 npm run check
 ```
 
-`check` builds the runtime, type-checks the Control API, runs the monitoring and search-diagnostic tests, lints, and checks formatting. It does not start a rewards job. Chromium installation is a separate operation needed for actual browser use, including API-mode sign-in.
+`check` builds the runtime, type-checks the Control API, runs the rewards behavior, monitoring, and search-diagnostic tests, lints, and checks formatting. It does not start a rewards job. Chromium installation is a separate operation needed for actual browser use, including API-mode sign-in.
 
 | Change                           | Verification                                                                       |
 | -------------------------------- | ---------------------------------------------------------------------------------- |

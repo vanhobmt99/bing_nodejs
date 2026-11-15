@@ -118,9 +118,13 @@ function normalizeCounters(value: unknown): Counters {
             })
             .filter((p): p is BasePromotion => p !== null)
     }
+    const readSearch = (value: unknown): BasePromotion[] | undefined => {
+        const normalized = read(value)
+        return normalized?.length ? normalized : undefined
+    }
     return {
-        pcSearch: read(counters.pcSearch ?? counters.PCSearch),
-        mobileSearch: read(counters.mobileSearch ?? counters.MobileSearch),
+        pcSearch: readSearch(counters.pcSearch ?? counters.PCSearch),
+        mobileSearch: readSearch(counters.mobileSearch ?? counters.MobileSearch),
         activityAndQuiz: read(counters.activityAndQuiz ?? counters.ActivityAndQuiz),
         dailyPoint: read(counters.dailyPoint ?? counters.DailyPoint)
     }

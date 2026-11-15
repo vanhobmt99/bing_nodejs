@@ -62,6 +62,7 @@ Tests use `node:test` and `node:assert/strict`. The existing `test:monitoring` c
 ```bash
 npm run build
 npm run check:api
+npm run test:rewards
 npm run test:monitoring
 npm run lint
 npm run format:check

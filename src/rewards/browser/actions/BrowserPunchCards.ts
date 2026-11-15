@@ -1,18 +1,20 @@
 import { OfferVerifier, type OfferReport } from '../../shared/OfferVerifier'
-import { activityFailure, activityResult } from '../../shared/ActivityResult'
+import { ActivitySkipError, activityFailure, activityResult } from '../../shared/ActivityResult'
 import { browserTimeout } from '../../../browser/BrowserTiming'
 import { BrowserTaskPage } from '../../../browser/BrowserTaskPage'
-import type { Page } from 'patchright'
+import type { Locator, Page } from 'patchright'
 
 import { URLs } from '../../../constants/urls'
 import { BaseActivity } from '../../shared/activities/BaseActivity'
-import { isSkippedOffer } from '../../shared/PromotionEligibility'
+import { isEligiblePunchCard, isSkippedOffer } from '../../shared/PromotionEligibility'
 import { runTaskWithDelay } from '../../shared/TaskPacing'
 import { browserOfferKey, browserTaskPass } from '../BrowserTaskPass'
 import {
     PUNCHCARD_LINKS,
     readPunchCardParents,
     readPunchCardPage,
+    readPunchCardStepCandidateMeta,
+    selectUniquePunchCardStepCandidate,
     type RenderedPunchCard,
     type RenderedPunchCardStep
 } from '../parsers/PunchCardPageParser'
@@ -35,11 +37,8 @@ export class BrowserPunchCards extends BaseActivity {
             await this.navigator.openEarn(sourcePage)
             const observedParents = await readPunchCardParents(sourcePage)
             for (const parent of observedParents) observePunchCard(this.bot, parent)
-            const parents = observedParents.filter(
-                parent =>
-                    !parent.complete &&
-                    !isSkippedOffer(parent.offerId, parent.destination) &&
-                    (!this.bot.config.skipNonPointTasks || parent.pointProgressMax > 0)
+            const parents = observedParents.filter(parent =>
+                isEligiblePunchCard(parent, this.bot.config.skipNonPointTasks)
             )
             if (!parents.length) {
                 this.bot.logger.debug(this.bot.isMobile, 'PUNCHCARD-BROWSER', 'No eligible incomplete punchcards')
@@ -217,10 +216,7 @@ export class BrowserPunchCards extends BaseActivity {
                 )
                 continue
             }
-            const control = await this.navigator.uniqueVisible(
-                page.locator('main').getByRole(child.role, { name: child.controlName, exact: true }),
-                `punchcard step "${child.title}"`
-            )
+            const control = await this.resolveStepControl(page, child)
             if (!control) {
                 this.bot.recordActivity(
                     'punchcard-child',
@@ -288,6 +284,26 @@ export class BrowserPunchCards extends BaseActivity {
             this.bot.isMobile,
             'PUNCHCARD-BROWSER',
             `Stopped at the step limit | offerId=${parent.offerId}`
+        )
+    }
+
+    private async resolveStepControl(page: Page, child: RenderedPunchCardStep): Promise<Locator | null> {
+        const candidates = page.locator('main').getByRole(child.role, { name: child.controlName, exact: true })
+        const count = await candidates.count()
+        const visible: Locator[] = []
+        for (let index = 0; index < count; index++) {
+            const candidate = candidates.nth(index)
+            if (await candidate.isVisible()) visible.push(candidate)
+        }
+        if (!visible.length) return null
+
+        const metadata = await readPunchCardStepCandidateMeta(visible)
+        const selection = selectUniquePunchCardStepCandidate(metadata, child)
+        if (selection.status === 'matched') return visible[selection.index]!
+        if (selection.status === 'not-found') return null
+        throw new ActivitySkipError(
+            'ambiguous-target',
+            `Multiple visible controls match punchcard step "${child.title}"; no control was clicked`
         )
     }
 

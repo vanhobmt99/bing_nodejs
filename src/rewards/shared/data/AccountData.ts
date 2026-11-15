@@ -1,4 +1,4 @@
-import { HttpError, isTerminalHttpError } from '../../../network/HttpError'
+import { HttpError, isTerminalHttpError, isTransientNetworkError } from '../../../network/HttpError'
 import { browserTimeout } from '../../../browser/BrowserTiming'
 import { mapApiDashboard, mapFlyoutDashboard } from './DashboardMapper'
 import type { Page } from 'patchright'
@@ -34,6 +34,7 @@ export class AccountData implements AccountDataSource {
     async getDashboardData(): Promise<RewardsState> {
         const errors: unknown[] = []
         const failures: string[] = []
+        const maxRounds = 3
         const deadline = Date.now() + browserTimeout(this.bot)
         const transports: UserDataTransport[] = this.bot.activePage ? ['node-http', 'in-page'] : ['node-http']
         const attempts = transports.flatMap(via => [
@@ -41,25 +42,53 @@ export class AccountData implements AccountDataSource {
             { via, url: URLs.bing.rewardsFlyoutUserInfo, map: mapFlyoutDashboard }
         ])
 
-        for (const [index, { via, url, map }] of attempts.entries()) {
-            this.bot.signal.throwIfAborted()
-            if (Date.now() >= deadline) break
-            const started = Date.now()
-            const attemptDeadline = started + Math.max(1, Math.floor((deadline - started) / (attempts.length - index)))
-            try {
-                return await this.fetchDashboard(url, map as (payload: unknown) => RewardsState, via, attemptDeadline)
-            } catch (error) {
+        for (let round = 1; round <= maxRounds; round++) {
+            const roundErrors: unknown[] = []
+            for (const [index, { via, url, map }] of attempts.entries()) {
                 this.bot.signal.throwIfAborted()
-                errors.push(error)
-                failures.push(`${via}/${new URL(url).pathname}=${this.errorMessage(error)}`)
-                this.bot.logger.warn(
-                    this.bot.isMobile,
-                    'GET-DASHBOARD-DATA',
-                    `User data source unavailable | via=${via} | path=${new URL(url).pathname}` +
-                        ` | attempt=${index + 1}/${attempts.length} | elapsedMs=${Date.now() - started}` +
-                        ` | remainingMs=${Math.max(0, deadline - Date.now())} | message=${this.errorMessage(error)}`
-                )
+                if (Date.now() >= deadline) break
+                const started = Date.now()
+                const attemptDeadline =
+                    started + Math.max(1, Math.floor((deadline - started) / (attempts.length - index)))
+                try {
+                    return await this.fetchDashboard(
+                        url,
+                        map as (payload: unknown) => RewardsState,
+                        via,
+                        attemptDeadline
+                    )
+                } catch (error) {
+                    this.bot.signal.throwIfAborted()
+                    errors.push(error)
+                    roundErrors.push(error)
+                    failures.push(`${via}/${new URL(url).pathname}=${this.errorMessage(error)}`)
+                    this.bot.logger.warn(
+                        this.bot.isMobile,
+                        'GET-DASHBOARD-DATA',
+                        `User data source unavailable | via=${via} | path=${new URL(url).pathname}` +
+                            ` | round=${round}/${maxRounds} | attempt=${index + 1}/${attempts.length}` +
+                            ` | elapsedMs=${Date.now() - started}` +
+                            ` | remainingMs=${Math.max(0, deadline - Date.now())} | message=${this.errorMessage(error)}`
+                    )
+                }
             }
+
+            if (
+                round === maxRounds ||
+                !roundErrors.some(isTransientNetworkError) ||
+                roundErrors.some(isTerminalHttpError)
+            ) {
+                break
+            }
+            const delayMs = 1500 * round
+            if (Date.now() + delayMs >= deadline) break
+            this.bot.logger.warn(
+                this.bot.isMobile,
+                'GET-DASHBOARD-DATA',
+                `All dashboard sources failed transiently; retrying | round=${round}/${maxRounds} | retryInMs=${delayMs}` +
+                    ` | remainingMs=${Math.max(0, deadline - Date.now())}`
+            )
+            await this.bot.utils.wait(delayMs)
         }
 
         const message = `Rewards user data unavailable | ${failures.join(' | ')}`

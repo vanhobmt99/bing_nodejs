@@ -3,7 +3,7 @@ import { ghostClick } from '../../../browser/GhostClick'
 import { browserTimeout } from '../../../browser/BrowserTiming'
 import { BrowserTaskPage } from '../../../browser/BrowserTaskPage'
 import { isBrowserPageCrashed } from '../../../browser/BrowserPageHealth'
-import { HttpError } from '../../../network/HttpError'
+import { HttpError, isTransientNetworkError } from '../../../network/HttpError'
 import type { Locator, Page, Request } from 'patchright'
 
 import { URLs } from '../../../constants/urls'
@@ -24,7 +24,6 @@ const DASHBOARD_REWARD_LINKS =
     'main a[href], main [role="link"][href], #dashboard a[href], mee-rewards-card a[href], a[data-react-aria-pressable="true"][href]'
 const MAX_CARD_SCROLLS = 20
 const PAGE_LOAD_ATTEMPTS = 3
-const RETRYABLE_PAGE_STATUSES = new Set([408, 425, 500, 502, 503, 504])
 
 export interface RewardTarget {
     destination?: string
@@ -156,12 +155,7 @@ export class BrowserRewardNavigator {
             } catch (error) {
                 this.bot.signal.throwIfAborted()
                 const message = error instanceof Error ? error.message : String(error)
-                const retryable =
-                    error instanceof HttpError
-                        ? RETRYABLE_PAGE_STATUSES.has(error.status)
-                        : (error as { code?: string })?.code === 'NO_RESPONSE' ||
-                          (error as { name?: string })?.name === 'TimeoutError' ||
-                          /net::ERR_(?:CONNECTION_RESET|CONNECTION_CLOSED|TIMED_OUT|NETWORK_CHANGED)/.test(message)
+                const retryable = isTransientNetworkError(error)
                 if (!retryable || page.isClosed() || attempt === PAGE_LOAD_ATTEMPTS) throw error
                 const retryDelay = Math.max((error as { retryAfterMs?: number })?.retryAfterMs ?? 0, 2000 * attempt)
 

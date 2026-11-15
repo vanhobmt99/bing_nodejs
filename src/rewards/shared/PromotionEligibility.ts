@@ -25,6 +25,21 @@ export function isSkippedOffer(offerId: string | null | undefined, destination?:
     }
 }
 
+export function isEligiblePunchCard(
+    promotion: {
+        offerId: string
+        destination?: string
+        complete: boolean
+        pointProgressMax: number
+        pointProgressMaxKnown?: boolean
+    },
+    skipNonPointTasks: boolean
+): boolean {
+    if (promotion.complete || isSkippedOffer(promotion.offerId, promotion.destination)) return false
+    if (!skipNonPointTasks) return true
+    return promotion.pointProgressMaxKnown === false || promotion.pointProgressMax > 0
+}
+
 export function isEligiblePromotion(promotion: BasePromotion, skipNonPointTasks: boolean): boolean {
     if (isSkippedOffer(promotion.offerId, promotion.destinationUrl)) return false
     if (promotion.complete || promotion.isHidden || promotion.exclusiveLockedFeatureStatus === 'locked') return false
