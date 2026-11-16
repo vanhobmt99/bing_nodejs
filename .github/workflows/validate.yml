@@ -2,9 +2,9 @@ name: Validate
 
 on:
     push:
-        branches: [v3, v4, v5]
+        branches: [main, v3, v4, v5]
     pull_request:
-        branches: [v3, v4, v5]
+        branches: [main, v3, v4, v5]
         types: [opened, synchronize, reopened, ready_for_review]
     merge_group:
         types: [checks_requested]
@@ -38,6 +38,7 @@ jobs:
               run: |
                   npm run build
                   npm run check:api --if-present
+                  npm run test:rewards --if-present
                   npm run test:monitoring --if-present
                   npm run lint --if-present
                   npm run format:check --if-present

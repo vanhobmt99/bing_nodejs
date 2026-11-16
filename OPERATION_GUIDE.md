@@ -136,6 +136,19 @@ Persist the `config`, `sessions`, and `diagnostics` bind mounts. Docker runs Chr
 
 Use `docker compose stop` to stop the stack and allow its graceful shutdown. The supplied 60-second stop grace period accommodates API and browser cleanup. For a monitoring deployment, use the same Compose file combination for startup, status, logs, and shutdown.
 
+## Publish a Docker Image to GHCR
+
+The `Build and Push Docker` GitHub Actions workflow runs on pushes to `main` and can also be started manually from the Actions tab on `main`. It runs the shared validation workflow before building and publishing `linux/amd64` and `linux/arm64` images with the repository's `GITHUB_TOKEN`; no personal registry token is required.
+
+Images are published as `ghcr.io/<owner>/<repository>:latest` and `ghcr.io/<owner>/<repository>:sha-<full-commit-sha>`. Use the commit tag or the digest recorded in the run summary to select an exact build. Versioned release images remain managed by the separate `Release and Docker Push` workflow on `v3`, `v4`, and `v5`.
+
+For this repository, trigger and inspect a run with:
+
+```bash
+gh workflow run docker-publish.yml --ref main
+gh run list --workflow docker-publish.yml
+```
+
 ## Nix
 
 With Nix flakes enabled and account/configuration files prepared:
