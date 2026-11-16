@@ -1,8 +1,7 @@
 services:
     microsoft-rewards-script:
-        build:
-            context: .
-        image: microsoft-rewards-script:local
+        image: ghcr.io/vanhobmt99/bing_nodejs:latest
+        pull_policy: always
         container_name: microsoft-rewards-script
         restart: unless-stopped
         stop_grace_period: 60s

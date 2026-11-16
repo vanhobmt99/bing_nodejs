@@ -43,7 +43,7 @@ Validate configuration, then start the application and monitoring services:
 
 ```bash
 docker compose -f compose.yaml -f compose.monitoring.yaml config --quiet
-docker compose -f compose.yaml -f compose.monitoring.yaml up -d --build
+docker compose -f compose.yaml -f compose.monitoring.yaml up -d --pull always --no-build
 docker compose -f compose.yaml -f compose.monitoring.yaml ps
 ```
 
@@ -52,6 +52,25 @@ Open [Grafana](http://127.0.0.1:3000/d/rewards-accounts) and sign in with `admin
 Grafana's administrator password is initialized on its first start. Changing `.env` does not reset a password already stored in its persistent volume. Set `GRAFANA_PORT` to a free port if 3000 is occupied.
 
 Select **Rewards Prometheus** as the data source and **local** as the deployment. Allow up to a minute for the first samples. Accounts appear before a rewards run, while balances and search results remain Unknown until observed. See [Search Views](#search-views) for account/device filters.
+
+### Update the local stack
+
+Back up `config/config.json` before restarting: the application image currently overwrites it from its bundled config on startup. See the [configuration overwrite caveat](../OPERATION_GUIDE.md#configuration-overwrite-caveat). Update the checkout and check the registry for every service with:
+
+```bash
+git pull --ff-only
+docker compose -f compose.yaml -f compose.monitoring.yaml up -d --pull always --no-build
+```
+
+The application uses the GHCR `latest` tag; Grafana, Prometheus, Loki and Alloy keep explicit version tags. Their `pull_policy: always` checks those tags on each `compose up`, and an image change causes Compose to recreate the affected container. To upgrade a monitoring component to another version, change its image tag. Compose does not poll for updates while the stack is running.
+
+Dashboard JSON and provisioning files are bind-mounted from `monitoring/grafana`, so pulling the bot image does not update them. `git pull` updates those files; Grafana reloads dashboard JSON within about 30 seconds. Restart Grafana after changing provisioning configuration:
+
+```bash
+docker compose -f compose.yaml -f compose.monitoring.yaml restart grafana
+```
+
+Keep the named volumes, including `grafana-data`, during updates. For local source builds, use `docker compose -f compose.yaml -f compose.build.yaml -f compose.monitoring.yaml up -d --build`.
 
 Prometheus scrapes every 30 seconds and retains samples for 30 days. Named Docker volumes retain both monitoring databases across container recreation. Avoid `docker compose down -v` when retaining monitoring data.
 
@@ -139,7 +158,7 @@ Run from the repository root. The base [compose.yaml](../compose.yaml) has `RUN_
 
 ```bash
 docker compose -f compose.yaml -f compose.grafana-cloud.yaml config --quiet
-docker compose -f compose.yaml -f compose.grafana-cloud.yaml up -d --build
+docker compose -f compose.yaml -f compose.grafana-cloud.yaml up -d --pull always --no-build
 docker compose -f compose.yaml -f compose.grafana-cloud.yaml ps
 ```
 
@@ -202,7 +221,7 @@ GRAFANA_CLOUD_LOKI_DATASOURCE_UID=your-cloud-loki-datasource-uid
 Add the logs overlay to the Cloud stack and install the diagnostic dashboard using the same Grafana service account settings as the account dashboard:
 
 ```bash
-docker compose -f compose.yaml -f compose.grafana-cloud.yaml -f compose.grafana-cloud-logs.yaml up -d --build
+docker compose -f compose.yaml -f compose.grafana-cloud.yaml -f compose.grafana-cloud-logs.yaml up -d --pull always --no-build
 npm run monitoring:cloud:logs-dashboard
 ```
 

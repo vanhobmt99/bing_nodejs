@@ -115,19 +115,21 @@ The API manages one rewards or session-generation job at a time. Start, restart,
 
 Review [compose.yaml](compose.yaml) before starting. Its current defaults run a job immediately (`RUN_ON_START: 'true'`) and schedule daily work at `0 7 * * *` in `Asia/Ho_Chi_Minh`.
 
+The default service pulls `ghcr.io/vanhobmt99/bing_nodejs:latest` from GHCR. Its `pull_policy: always` checks the registry whenever Compose starts the service. The `latest` tag stays the same; Docker uses the image digest to detect a changed build and Compose recreates the container when needed. This does not poll the registry while a container is running. If the package is private, authenticate Docker to `ghcr.io` with an account that can read it before starting.
+
 For manual API-only operation, enable `API_MODE`, configure `API_TOKEN`, set `RUN_ON_START: 'false'`, clear `CRON_SCHEDULE`, and disable any persisted schedule. `API_MODE` enables the server; `CONFIG_REWARDS_MODE` selects the rewards transport. Saved scheduling settings take precedence over the initial cron environment setting.
 
 ### Configuration Overwrite Caveat
 
 The current image bundles the build-time root `config.json` as `config.default.json`. On every startup, [scripts/docker/entrypoint.sh](scripts/docker/entrypoint.sh) copies that file over the mounted `config/config.json`, then applies config synchronization and environment overrides. Existing mounted settings and changes saved through the API can therefore be overwritten by a restart or recreation.
 
-Back up the mounted config before restarting. To carry intended settings through startup, use supported `CONFIG_*` environment overrides or update the bundled root config and rebuild the image. `CONFIG_AUTO_SYNC` controls adding missing defaults; it does not prevent this overwrite. This is recorded in [docs/code-review.md](docs/code-review.md); the usage guide's initialize-only description does not match the current entrypoint.
+Back up the mounted config before restarting. To carry intended settings through startup, use supported `CONFIG_*` environment overrides or update the bundled root config and rebuild the image. `CONFIG_AUTO_SYNC` controls adding missing defaults; it does not prevent this overwrite. This is also recorded in [docs/code-review.md](docs/code-review.md).
 
 Validate without printing the resolved credentials, then start the deployment when ready to run its configured services and jobs:
 
 ```bash
 docker compose config --quiet
-docker compose up -d --build
+docker compose up -d --pull always --no-build
 docker compose ps
 docker compose logs -f
 ```
@@ -135,6 +137,14 @@ docker compose logs -f
 Persist the `config`, `sessions`, and `diagnostics` bind mounts. Docker runs Chromium headlessly. If exposing the API on the host, use the documented loopback mapping `127.0.0.1:3010:3010`.
 
 Use `docker compose stop` to stop the stack and allow its graceful shutdown. The supplied 60-second stop grace period accommodates API and browser cleanup. For a monitoring deployment, use the same Compose file combination for startup, status, logs, and shutdown.
+
+For development with a local image instead of GHCR, add the build override:
+
+```bash
+docker compose -f compose.yaml -f compose.build.yaml up -d --build
+```
+
+Add monitoring overlays after these files when developing with the monitoring stack.
 
 ## Publish a Docker Image to GHCR
 
@@ -167,10 +177,19 @@ For local Grafana, set `API_TOKEN` and `GRAFANA_ADMIN_PASSWORD` in `.env`, revie
 
 ```bash
 docker compose -f compose.yaml -f compose.monitoring.yaml config --quiet
-docker compose -f compose.yaml -f compose.monitoring.yaml up -d --build
+docker compose -f compose.yaml -f compose.monitoring.yaml up -d --pull always --no-build
 ```
 
 The overlay adds Prometheus, Grafana, Loki, and a log collector. Grafana defaults to `http://127.0.0.1:3000/d/rewards-accounts`; search diagnostics use `/d/rewards-search-diagnostics`. Set `GRAFANA_PORT` if 3000 is occupied. Grafana initializes its administrator credentials on first startup; changing `.env` later does not reset an existing stored password.
+
+To update the application and the complete local monitoring stack, back up the mounted application config, then run:
+
+```bash
+git pull --ff-only
+docker compose -f compose.yaml -f compose.monitoring.yaml up -d --pull always --no-build
+```
+
+Monitoring images also use `pull_policy: always`, while retaining their explicit version tags. Pulling checks those tags; upgrading Grafana or another monitoring component to a different version requires changing its image tag. Dashboard JSON and provisioning files are bind-mounted from `monitoring/grafana`, so `git pull` updates those files separately from images. The dashboard provider reloads dashboard JSON every 30 seconds; restart Grafana after changing provisioning configuration. Keep the named monitoring volumes when updating.
 
 Grafana Cloud uses the metrics overlay `compose.grafana-cloud.yaml` and optional logs overlay `compose.grafana-cloud-logs.yaml`. Follow [docs/monitoring.md](docs/monitoring.md) for credentials, collector setup, and the dashboard installation commands. Those installers write to Grafana Cloud.
 

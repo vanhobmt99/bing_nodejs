@@ -64,7 +64,7 @@ The launcher installs pinned dependencies and Chromium, then builds. It supplies
 3. Start it:
 
 ```bash
-docker compose up -d --build
+docker compose up -d --pull always --no-build
 docker compose logs -f
 ```
 
@@ -83,21 +83,29 @@ docker compose logs -f
 
 - Docker runs headlessly in both rewards modes.
 - Settings live at **`config/config.json` on the host**.
-- First startup creates that file from built-in defaults.
-- To reuse a local config, place it at `config/config.json` before starting.
+- Every startup copies the bundled image's `config.default.json` over that file, then applies supported environment overrides. Back up mounted settings before updating or restarting; see the [configuration overwrite caveat](../OPERATION_GUIDE.md#configuration-overwrite-caveat).
+- Use supported `CONFIG_*` environment overrides to carry settings through startup, or build a local image containing your intended root `config.json`.
 - Keep the supplied `config`, `sessions` and `diagnostics` volume mounts.
 - Saved schedules override `CRON_SCHEDULE`; see [API scheduling](control-api.md#scheduling).
 - For manual API-only runs, disable the saved schedule, set `RUN_ON_START=false` and clear `CRON_SCHEDULE`.
 
 Connect a dashboard using the [Docker API setup](control-api.md#docker).
 
-To use a published v5 image, replace the service's `build:` block and `image:` with:
+The default service uses `ghcr.io/vanhobmt99/bing_nodejs:latest` with `pull_policy: always`. Each `compose up` checks the registry, and Compose recreates the container if the image changed. It does not check for updates continuously. Authenticate Docker to `ghcr.io` first if the package is private. To select an exact build, change `image:` to its published `sha-<full-commit-sha>` tag or digest.
+
+For local development, use the build override:
+
+```bash
+docker compose -f compose.yaml -f compose.build.yaml up -d --build
+```
+
+To use an upstream published v5 image instead, change `image:` to:
 
 ```yaml
 image: ghcr.io/thenetsky/microsoft-rewards-script:5
 ```
 
-Then use `docker compose pull` and `docker compose up -d`. Pin an exact `5.x.y`
+Then use `docker compose pull` and `docker compose up -d --no-build`. Pin an exact `5.x.y` tag or digest for a reproducible deployment.
 
 ## Accounts and sessions
 
@@ -557,7 +565,7 @@ npm run build
 node dist/config/ConfigSync.js sync --patch
 ```
 
-4. Restart the bot/API. For Docker, run `docker compose up -d --build`.
+4. Restart the bot/API. For published Docker images, run `docker compose up -d --pull always --no-build` after the build has been published. To build local source changes, run `docker compose -f compose.yaml -f compose.build.yaml up -d --build`.
 
 Config sync uses built-in defaults and backs up an existing config when patching it.
 

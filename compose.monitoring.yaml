@@ -8,6 +8,7 @@ services:
 
     prometheus:
         image: prom/prometheus:v3.16.0-busybox
+        pull_policy: always
         restart: unless-stopped
         entrypoint: ['/bin/sh', '/etc/prometheus/entrypoint.sh']
         command:
@@ -28,6 +29,7 @@ services:
 
     grafana:
         image: grafana/grafana:13.2.5-ubuntu
+        pull_policy: always
         restart: unless-stopped
         environment:
             GF_SECURITY_ADMIN_USER: '${GRAFANA_ADMIN_USER:-admin}'
@@ -49,6 +51,7 @@ services:
 
     loki:
         image: grafana/loki:3.5.7
+        pull_policy: always
         restart: unless-stopped
         command: ['-config.file=/etc/loki/config.yml']
         volumes:
@@ -59,6 +62,7 @@ services:
 
     alloy-logs:
         image: grafana/alloy:v1.21.3
+        pull_policy: always
         restart: unless-stopped
         command: ['run', '--storage.path=/var/lib/alloy/data', '/etc/alloy/logs.alloy']
         environment:

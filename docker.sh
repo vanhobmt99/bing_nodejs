@@ -49,14 +49,15 @@ if grep -q "TZ: 'America/Toronto'" compose.yaml 2>/dev/null; then
 fi
 
 echo ""
-echo "[3/3] Dang build va khoi chay container qua Docker Compose..."
+echo "[3/3] Dang keo image GHCR va khoi chay container qua Docker Compose..."
 echo ""
 
 # 6. Khoi chay Docker Compose
 if docker compose version &> /dev/null; then
-    docker compose up -d --build
+    docker compose up -d --pull always --no-build
 else
-    docker-compose up -d --build
+    docker-compose pull
+    docker-compose up -d --no-build
 fi
 
 echo ""

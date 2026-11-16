@@ -1,0 +1,6 @@
+services:
+    microsoft-rewards-script:
+        build:
+            context: .
+        image: microsoft-rewards-script:local
+        pull_policy: build

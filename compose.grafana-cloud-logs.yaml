@@ -1,6 +1,7 @@
 services:
     alloy-logs:
         image: grafana/alloy:v1.21.3
+        pull_policy: always
         restart: unless-stopped
         command: ['run', '--storage.path=/var/lib/alloy/data', '/etc/alloy/logs.alloy']
         environment:
