@@ -107,8 +107,10 @@ export class CodeLogin {
                             ? `Enter the full email address for "${maskedHint}" to send the code to (waiting ${this.maxManualSeconds}s): `
                             : `Enter the email address to send the code to (waiting ${this.maxManualSeconds}s): `,
                         timeoutSeconds: this.maxManualSeconds,
-                        validate: value => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value)
+                        validate: value => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value),
+                        signal: this.bot.signal
                     })
+                    this.bot.signal.throwIfAborted()
 
                     if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
                         this.bot.logger.warn(
@@ -168,8 +170,10 @@ export class CodeLogin {
                 const code = await promptInput({
                     question: `Enter the 6-digit code (waiting ${this.maxManualSeconds}s): `,
                     timeoutSeconds: this.maxManualSeconds,
-                    validate: code => /^\d{6}$/.test(code)
+                    validate: code => /^\d{6}$/.test(code),
+                    signal: this.bot.signal
                 })
+                this.bot.signal.throwIfAborted()
 
                 if (!code || !/^\d{6}$/.test(code)) {
                     this.bot.logger.warn(

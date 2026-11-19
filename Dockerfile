@@ -36,6 +36,7 @@ RUN ./node_modules/.bin/patchright install --with-deps chromium \
 COPY --chmod=644 config.json ./config.default.json
 COPY --chmod=755 scripts/docker/run_daily.sh ./scripts/docker/run_daily.sh
 COPY --chmod=755 scripts/docker/healthcheck.sh ./scripts/docker/healthcheck.sh
+COPY --chmod=755 scripts/docker/send_input.sh ./scripts/docker/send_input.sh
 COPY scripts/lib/ ./scripts/lib/
 COPY scripts/main/ ./scripts/main/
 COPY --chmod=644 scripts/package.json ./scripts/package.json

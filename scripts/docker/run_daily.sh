@@ -213,6 +213,10 @@ docker_log run_daily.sh info "Starting script..."
 run_status=0
 if [ "${API_MODE:-false}" = "true" ]; then
     setsid node dist/control-api/trigger.js &
+elif [ "${INTERACTIVE_STDIN:-false}" = "true" ] && [ -p "${INTERACTIVE_STDIN_FIFO:-}" ]; then
+    # Discard stale input queued while no bot process was running.
+    dd if="$INTERACTIVE_STDIN_FIFO" of=/dev/null bs=4096 iflag=nonblock status=none 2>/dev/null || true
+    setsid node dist/index.js < "$INTERACTIVE_STDIN_FIFO" &
 else
     setsid node dist/index.js &
 fi

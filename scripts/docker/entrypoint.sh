@@ -57,6 +57,10 @@ if [ "$#" -gt 0 ]; then
     exec "$@"
 fi
 
+: "${INTERACTIVE_STDIN:=false}"
+: "${INTERACTIVE_STDIN_FIFO:=/tmp/microsoft-rewards-stdin.fifo}"
+export INTERACTIVE_STDIN INTERACTIVE_STDIN_FIFO
+
 if [ "${API_MODE:-false}" = "true" ]; then
     : "${API_HOST:=0.0.0.0}"
     export API_HOST
@@ -79,6 +83,8 @@ chmod 600 /etc/container_env
 service_pids=()
 cron_pid=''
 initial_run_pid=''
+stdin_bridge_pid=''
+stdin_fifo_keepalive_fd=''
 stop_services() {
     trap '' INT TERM
     docker_log entrypoint info '[entrypoint] Stopping scheduler and active processes...'
@@ -87,6 +93,11 @@ stop_services() {
     for pid in "${child_pids[@]}"; do
         kill -TERM "$pid" 2>/dev/null || true
     done
+    if [ -n "$stdin_fifo_keepalive_fd" ]; then
+        exec {stdin_fifo_keepalive_fd}>&- 2>/dev/null || true
+        stdin_fifo_keepalive_fd=''
+    fi
+    [ -z "$stdin_bridge_pid" ] || wait "$stdin_bridge_pid" 2>/dev/null || true
     [ -z "$cron_pid" ] || wait "$cron_pid" 2>/dev/null || true
 
     # Cron jobs have their own sessions; let their traps stop the bot process groups.
@@ -106,6 +117,7 @@ stop_services() {
             sleep 0.1
         done
     done
+    [ -p "$INTERACTIVE_STDIN_FIFO" ] && rm -f "$INTERACTIVE_STDIN_FIFO" 2>/dev/null || true
 }
 trap stop_services EXIT
 trap 'exit 130' INT
@@ -123,11 +135,32 @@ if [ "${API_MODE:-false}" = "true" ]; then
     docker_log_flush
     export -p > /etc/container_env
     chmod 600 /etc/container_env
+    if [ "$INTERACTIVE_STDIN" = "true" ]; then
+        docker_log entrypoint warn "[entrypoint] INTERACTIVE_STDIN=true does not attach stdin to Control API runs (API_MODE=true)."
+    fi
+elif [ "$INTERACTIVE_STDIN" = "true" ]; then
+    rm -f "$INTERACTIVE_STDIN_FIFO"
+    mkfifo -m 600 "$INTERACTIVE_STDIN_FIFO"
+    exec {stdin_fifo_keepalive_fd}<>"$INTERACTIVE_STDIN_FIFO"
+    if [ -r /dev/stdin ]; then
+        exec {container_stdin_fd}<&0
+        (
+            eval "exec ${stdin_fifo_keepalive_fd}>&- ${container_stdin_fd}<&-"
+            exec cat
+        ) <&"$container_stdin_fd" > "$INTERACTIVE_STDIN_FIFO" &
+        stdin_bridge_pid=$!
+        exec {container_stdin_fd}<&-
+    fi
+    docker_log entrypoint info "[entrypoint] Interactive stdin enabled (use 'docker attach' or 'scripts/docker/send_input.sh')"
 fi
 
 if [ "${RUN_ON_START:-false}" = "true" ]; then
     docker_log entrypoint info '[entrypoint] Starting initial run...'
-    SKIP_RANDOM_SLEEP=true /bin/bash "$SCRIPT_DIR/scripts/docker/run_daily.sh" &
+    (
+        [ -z "$stdin_fifo_keepalive_fd" ] || eval "exec ${stdin_fifo_keepalive_fd}>&-"
+        export SKIP_RANDOM_SLEEP=true
+        exec /bin/bash "$SCRIPT_DIR/scripts/docker/run_daily.sh"
+    ) &
     initial_run_pid=$!
 fi
 

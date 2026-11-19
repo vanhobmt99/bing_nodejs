@@ -87,8 +87,10 @@ export class TotpLogin {
                 const code = await promptInput({
                     question: `Enter the 6-digit TOTP code (waiting ${this.maxManualSeconds}s): `,
                     timeoutSeconds: this.maxManualSeconds,
-                    validate: code => /^\d{6}$/.test(code)
+                    validate: code => /^\d{6}$/.test(code),
+                    signal: this.bot.signal
                 })
+                this.bot.signal.throwIfAborted()
 
                 if (!code || !/^\d{6}$/.test(code)) {
                     this.bot.logger.warn(

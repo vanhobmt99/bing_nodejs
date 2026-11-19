@@ -5,6 +5,9 @@ services:
         container_name: microsoft-rewards-script
         restart: unless-stopped
         stop_grace_period: 60s
+        # Keep stdin and a PTY attached so interactive login prompts can be answered via `docker attach`.
+        stdin_open: true
+        tty: true
         # Chromium needs a larger /dev/shm when running multiple clusters (Docker default is 64MB)
         shm_size: '2gb'
         volumes:
@@ -23,6 +26,10 @@ services:
             # that file to revert to the base CRON_SCHEDULE again.
             CRON_SCHEDULE: '0 7 * * *' # use crontab.guru to customize your schedule
             RUN_ON_START: 'true' # run script immediately on container start
+            # Allow interactive stdin prompts (email OTP, recovery email, TOTP) via `docker attach`
+            # or `docker exec -it microsoft-rewards-script scripts/docker/send_input.sh`.
+            # Set to 'false' to fail fast on unattended cron runs instead of waiting for manual input.
+            INTERACTIVE_STDIN: 'true'
             SKIP_RANDOM_SLEEP: 'false'
             #MIN_SLEEP_MINUTES: "5"
             #MAX_SLEEP_MINUTES: "50"

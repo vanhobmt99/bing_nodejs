@@ -90,8 +90,10 @@ export class RecoveryLogin {
                 const email = await promptInput({
                     question: `Recovery email (waiting ${this.maxManualSeconds}s): `,
                     timeoutSeconds: this.maxManualSeconds,
-                    validate: email => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)
+                    validate: email => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email),
+                    signal: this.bot.signal
                 })
+                this.bot.signal.throwIfAborted()
 
                 if (!email) {
                     this.bot.logger.warn(

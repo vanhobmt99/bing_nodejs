@@ -3,17 +3,20 @@ import { createBot } from './core/createBot'
 import { loadConfig } from './config/Load'
 import { checkNodeVersion } from './config/Validator'
 import { flushRunResources, installProcessLifecycle } from './core/ProcessLifecycle'
+import { installClusterStdinRelay, teardownClusterStdinRelay } from './browser/auth/methods/LoginUtils'
 import { logSystemMessage } from './logging/LogEvent'
 
 async function main(): Promise<void> {
     checkNodeVersion()
     const bot = createBot(loadConfig())
     installProcessLifecycle(bot.context)
+    if (cluster.isPrimary) installClusterStdinRelay(bot.context.cancellation.signal)
     try {
         await bot.initialize()
         await bot.run()
     } finally {
         if (cluster.isPrimary) {
+            teardownClusterStdinRelay()
             await bot.context.sessions.closeAll()
             await flushRunResources()
             if (process.connected) process.disconnect()

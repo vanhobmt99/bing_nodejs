@@ -136,6 +136,23 @@ docker compose logs -f
 
 Persist the `config`, `sessions`, and `diagnostics` bind mounts. Docker runs Chromium headlessly. If exposing the API on the host, use the documented loopback mapping `127.0.0.1:3010:3010`.
 
+### Interactive Stdin in Docker
+
+[compose.yaml](compose.yaml) enables `stdin_open: true`, `tty: true`, and `INTERACTIVE_STDIN: 'true'` by default so login prompts (email verification codes, recovery emails, or TOTP codes) can be answered while the container runs with `API_MODE=false` (including `RUN_ON_START`, scheduled cron jobs, and multi-cluster runs):
+
+```bash
+# Send input to an active prompt without attaching to container stdout
+docker exec -it microsoft-rewards-script scripts/docker/send_input.sh
+
+# Or pipe input directly
+echo "123456" | docker exec -i microsoft-rewards-script scripts/docker/send_input.sh
+
+# Or attach directly to the container terminal (detach with Ctrl+P, Ctrl+Q — Ctrl+C stops the container)
+docker attach microsoft-rewards-script
+```
+
+To fail fast instead of waiting for manual input during unattended cron runs, set `INTERACTIVE_STDIN: 'false'` in [compose.yaml](compose.yaml). Interactive stdin forwarding applies to direct Docker runs (`API_MODE=false`) and `docker compose run --rm -it`; background runs spawned by the Control API (`API_MODE=true`) keep stdin detached.
+
 Use `docker compose stop` to stop the stack and allow its graceful shutdown. The supplied 60-second stop grace period accommodates API and browser cleanup. For a monitoring deployment, use the same Compose file combination for startup, status, logs, and shutdown.
 
 For development with a local image instead of GHCR, add the build override:
