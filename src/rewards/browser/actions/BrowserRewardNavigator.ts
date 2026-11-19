@@ -457,6 +457,17 @@ export class BrowserRewardNavigator {
             const match = select(stable, 'destination URL without tracking parameters')
             if (match) return match
         }
+        const targetStableKeys = rewardUrlIdentity(target.destination, page.url()).stableKeys
+        if (targetStableKeys.length) {
+            const byStableKey = candidates.filter(card => {
+                const cardKeys = rewardUrlIdentity(card.destination, page.url()).stableKeys
+                return targetStableKeys.some(key => cardKeys.includes(key))
+            })
+            if (byStableKey.length) {
+                const match = select(byStableKey, 'destination filter key')
+                if (match) return match
+            }
+        }
         const titled = title ? candidates.filter(card => card.title === title) : []
         if (titled.length) {
             const match = select(titled, 'card title')
@@ -543,6 +554,33 @@ export class BrowserRewardNavigator {
         let crashPopupWait: (() => void) | undefined
         let report: Promise<BrowserClickResult['activityReport']> | undefined
         let reportTimeout: ReturnType<typeof setTimeout> | undefined
+        let nextActionTimeout: ReturnType<typeof setTimeout> | undefined
+        const nextActionReports: Promise<void>[] = []
+        const observeNextAction = (request: Request): void => {
+            if (request.method() !== 'POST') return
+            try {
+                const url = new URL(request.url())
+                if (url.origin !== URLs.rewards.origin) return
+                const headers = request.headers()
+                if (!headers['next-action']) return
+                nextActionReports.push(
+                    request
+                        .response()
+                        .then(async response => {
+                            if (!response) return
+                            const body = await response.text().catch(() => '')
+                            this.bot.logger.debug(
+                                this.bot.isMobile,
+                                'REWARD-REPORT',
+                                `Rewards Next-Action response received | offerId=${offerId ?? 'unknown'} | status=${response.status()} | ok=${response.ok()} | acknowledged=${/(?:^|\n)\d+:true(?:\n|$)/.test(body)}`
+                            )
+                        })
+                        .catch(() => undefined)
+                )
+            } catch {
+                // Ignore
+            }
+        }
         const observeReport = (request: Request): void => {
             if (report || request.method() !== 'POST') return
             try {
@@ -583,6 +621,7 @@ export class BrowserRewardNavigator {
         }
         page.on('popup', observePopup)
         const context = page.context()
+        context.on('request', observeNextAction)
         if (offerId) context.on('request', observeReport)
 
         try {
@@ -628,6 +667,14 @@ export class BrowserRewardNavigator {
             await this.bot.utils.wait(1500)
             if (isBrowserPageCrashed(destinationPage)) throw new Error('Reward destination page crashed')
             const activityReport = report ? await report : undefined
+            if (nextActionReports.length) {
+                await Promise.race([
+                    Promise.allSettled(nextActionReports),
+                    new Promise<void>(resolve => {
+                        nextActionTimeout = setTimeout(resolve, Math.min(timeout('optional'), 5000))
+                    })
+                ])
+            }
             signal.throwIfAborted()
 
             return { page: destinationPage, openedPopup: Boolean(popup), activityReport, close: () => task.close() }
@@ -637,8 +684,10 @@ export class BrowserRewardNavigator {
             throw error
         } finally {
             page.off('popup', observePopup)
+            context.off('request', observeNextAction)
             if (offerId) context.off('request', observeReport)
             if (reportTimeout) clearTimeout(reportTimeout)
+            if (nextActionTimeout) clearTimeout(nextActionTimeout)
             if (popupTimeout) clearTimeout(popupTimeout)
             if (cancelPopupWait) signal.removeEventListener('abort', cancelPopupWait)
             if (closePopupWait) page.off('close', closePopupWait)

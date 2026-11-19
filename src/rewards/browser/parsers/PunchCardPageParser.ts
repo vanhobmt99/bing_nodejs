@@ -1,5 +1,5 @@
 import type { Locator, Page } from 'patchright'
-import type { ParentQuest } from '../../shared/parsers/RewardsPageParser'
+import type { ParentQuest, QuestChild } from '../../shared/parsers/RewardsPageParser'
 
 export const PUNCHCARD_LINKS = '#quests a[href*="/earn/quest/"]'
 
@@ -29,6 +29,66 @@ export interface StepControlCandidateMeta {
 
 export type StepControlSelection = { status: 'matched'; index: number } | { status: 'not-found' | 'ambiguous' }
 
+function normalizeQuestUrl(raw: string): string {
+    if (!raw) return ''
+    try {
+        const url = new URL(raw, 'https://rewards.bing.com')
+        url.hash = ''
+        return `${url.origin}${url.pathname.replace(/\/+$/, '')}${url.search}`.toLowerCase()
+    } catch {
+        return raw.trim().toLowerCase()
+    }
+}
+
+/** Populate missing DOM step offerIds using the quest page's RSC child metadata when unambiguously aligned. */
+export function correlateQuestStepOfferIds(
+    steps: ReadonlyArray<RenderedPunchCardStep>,
+    rscChildren: ReadonlyArray<QuestChild>
+): RenderedPunchCardStep[] {
+    if (!steps.length || !rscChildren.length) return [...steps]
+
+    const usedOfferIds = new Set(steps.map(step => step.offerId).filter((id): id is string => Boolean(id)))
+    const enriched = steps.map(step => ({ ...step }))
+
+    for (const step of enriched) {
+        if (step.offerId || !step.destination) continue
+        const targetUrl = normalizeQuestUrl(step.destination)
+        const matches = rscChildren.filter(
+            child =>
+                !usedOfferIds.has(child.offerId) &&
+                child.destination &&
+                normalizeQuestUrl(child.destination) === targetUrl
+        )
+        if (matches.length === 1) {
+            step.offerId = matches[0]!.offerId
+            usedOfferIds.add(matches[0]!.offerId)
+        }
+    }
+
+    const unlinkedSteps = enriched.filter(step => !step.offerId && !step.complete)
+    const unlinkedChildren = rscChildren.filter(child => !usedOfferIds.has(child.offerId) && !child.isCompleted)
+    const alignSteps = (candidates: RenderedPunchCardStep[]): boolean => {
+        if (!candidates.length || candidates.length !== unlinkedChildren.length) return false
+        const statesAlign = candidates.every((step, index) => {
+            const child = unlinkedChildren[index]!
+            return step.disabled === (child.isLocked || child.isDisabled)
+        })
+        if (!statesAlign) return false
+        for (let index = 0; index < candidates.length; index++) {
+            const offerId = unlinkedChildren[index]!.offerId
+            candidates[index]!.offerId = offerId
+            usedOfferIds.add(offerId)
+        }
+        return true
+    }
+
+    if (!alignSteps(unlinkedSteps)) {
+        alignSteps(unlinkedSteps.filter(step => step.headingIndex !== undefined))
+    }
+
+    return enriched
+}
+
 /** Pick the unique enabled control for a punchcard step when multiple visible controls share its label. */
 export function selectUniquePunchCardStepCandidate(
     candidates: ReadonlyArray<StepControlCandidateMeta>,
@@ -56,6 +116,9 @@ export function selectUniquePunchCardStepCandidate(
     if (step.destination && narrow(meta => meta.href === step.destination)) {
         return { status: 'matched', index: pool[0]!.index }
     }
+    if (step.headingIndex === undefined && narrow(meta => meta.headingIndex === null)) {
+        return { status: 'matched', index: pool[0]!.index }
+    }
     if (step.title && narrow(meta => meta.headingTitle === step.title)) {
         return { status: 'matched', index: pool[0]!.index }
     }
@@ -69,6 +132,10 @@ export async function readPunchCardParents(page: Page): Promise<RenderedPunchCar
                 .replace(/[\u200b-\u200d\ufeff]/g, '')
                 .replace(/\s+/g, ' ')
                 .trim()
+        const visible = (node: Element) => {
+            const style = getComputedStyle(node)
+            return node.getClientRects().length > 0 && style.visibility !== 'hidden' && style.display !== 'none'
+        }
         const cards = new Map<string, RenderedPunchCard>()
         for (const element of elements) {
             const style = getComputedStyle(element)
@@ -97,6 +164,12 @@ export async function readPunchCardParents(page: Page): Promise<RenderedPunchCar
             const points = [...element.querySelectorAll('.rounded-cornerCircular p')]
                 .map(node => text(node.textContent))
                 .find(value => /^\+?\s*\d[\d,]*$/.test(value))
+            const hasSuccessBadge = Boolean(element.querySelector('.bg-statusSuccessRewardsBg'))
+            const hasClaimCta =
+                !hasSuccessBadge &&
+                [...element.querySelectorAll('button, [role="button"], span, p')].some(
+                    node => visible(node) && !node.closest('h3') && /^(?:claim|collect)\b/i.test(text(node.textContent))
+                )
             cards.set(offerId, {
                 offerId,
                 title: text(heading.textContent),
@@ -106,8 +179,8 @@ export async function readPunchCardParents(page: Page): Promise<RenderedPunchCar
                 completedSteps: progress ? Number(progress[1]) : null,
                 totalSteps: progress ? Number(progress[2]) : null,
                 complete: Boolean(
-                    element.querySelector('.bg-statusSuccessRewardsBg') ||
-                    (progress && Number(progress[2]) > 0 && Number(progress[1]) >= Number(progress[2]))
+                    hasSuccessBadge ||
+                    (!hasClaimCta && progress && Number(progress[2]) > 0 && Number(progress[1]) >= Number(progress[2]))
                 )
             })
         }
@@ -131,8 +204,11 @@ export async function readPunchCardPage(page: Page) {
             .map(node => text(node.textContent).match(/^(\d+)\s*\/\s*(\d+)\s+tasks?$/i))
             .find(match => match !== null)
         const steps: RenderedPunchCardStep[] = []
+        const seenControls = new Set<Element>()
         for (const [headingIndex, heading] of [...main.querySelectorAll('h3')].entries()) {
             if (!visible(heading)) continue
+            const headingTitle = text(heading.textContent)
+            if (/^terms(?:\s+and\s+conditions)?$/i.test(headingTitle)) continue
             let container = heading.parentElement
 
             while (container && container !== main && container.querySelectorAll('h3').length === 1) {
@@ -140,8 +216,24 @@ export async function readPunchCardPage(page: Page) {
                     ...container.querySelectorAll('a[href], [role="link"], button, [role="button"]')
                 ].filter(visible)
                 if (controls.length) {
-                    if (controls.length !== 1) break
-                    const control = controls[0]!
+                    const actionControls =
+                        controls.length === 1
+                            ? controls
+                            : controls.filter(control => {
+                                  const label = text(control.getAttribute('aria-label') ?? control.textContent)
+                                  return Boolean(label) && !/^(?:read|learn)\s+more$|^terms\b|^privacy\b/i.test(label)
+                              })
+                    const enabledActionControls = actionControls.filter(
+                        control => !control.closest('[disabled], [aria-disabled="true"], [data-disabled], [inert]')
+                    )
+                    const control =
+                        actionControls.length === 1
+                            ? actionControls[0]!
+                            : enabledActionControls.length === 1
+                              ? enabledActionControls[0]!
+                              : null
+                    if (!control) break
+                    seenControls.add(control)
                     const row =
                         container.parentElement?.querySelectorAll('h3').length === 1
                             ? container.parentElement
@@ -161,7 +253,7 @@ export async function readPunchCardPage(page: Page) {
                             control.getAttribute('data-offer-id') ??
                             container.getAttribute('data-offerid') ??
                             container.getAttribute('data-offer-id'),
-                        title: text(heading.textContent),
+                        title: headingTitle,
                         description: text(heading.nextElementSibling?.textContent),
                         destination: control.getAttribute('href') ?? '',
                         controlName: text(control.getAttribute('aria-label') ?? control.textContent),
@@ -174,6 +266,41 @@ export async function readPunchCardPage(page: Page) {
                 }
                 container = container.parentElement
             }
+        }
+        const standaloneControls = [...main.querySelectorAll('a[href], [role="link"], button, [role="button"]')].filter(
+            element => {
+                if (seenControls.has(element) || !visible(element)) return false
+                if (
+                    element.closest('header, nav, footer, [disabled], [aria-disabled="true"], [data-disabled], [inert]')
+                )
+                    return false
+                const label = text(element.getAttribute('aria-label') ?? element.textContent)
+                const href = element.getAttribute('href') ?? ''
+                if (!label) return false
+                if (/^(?:claim|collect)\b/i.test(label)) return true
+                if (/^redeem\b/i.test(label) && /\/redeem(?:\/|\?|$)/i.test(href)) return true
+                return false
+            }
+        )
+        for (const control of standaloneControls) {
+            const controlName = text(control.getAttribute('aria-label') ?? control.textContent)
+            const destination = control.getAttribute('href') ?? ''
+            const complete = Boolean(
+                control.matches('[data-completed="true"], [data-complete="true"]') ||
+                control.querySelector(
+                    '[data-completed="true"], [data-complete="true"], .bg-statusSuccessRewardsBg, [aria-label="Completed"]'
+                )
+            )
+            steps.push({
+                offerId: control.getAttribute('data-offerid') ?? control.getAttribute('data-offer-id'),
+                title: controlName,
+                description: '',
+                destination,
+                controlName,
+                role: control.matches('button, [role="button"]') ? 'button' : 'link',
+                disabled: false,
+                complete
+            })
         }
         return {
             steps,

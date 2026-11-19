@@ -58,10 +58,12 @@ export class BrowserUrlReward extends BaseActivity {
         }
 
         const oldBalance = this.bot.userData.currentPoints
-        const flyoutFirst = source === 'daily-set' || source === 'more-promotions' || pass?.surface === 'flyout'
-        const surfaces: RewardSurface[] = flyoutFirst
-            ? ['flyout', 'earn', 'dashboard']
-            : ['earn', 'flyout', 'dashboard']
+        const surfaces: RewardSurface[] =
+            source === 'daily-set'
+                ? ['flyout', 'dashboard', 'earn']
+                : source === 'more-promotions' || pass?.surface === 'flyout'
+                  ? ['flyout', 'earn', 'dashboard']
+                  : ['earn', 'flyout', 'dashboard']
         let task: BrowserTaskPage | undefined
         let page = sourcePage
         let closeClick: (() => Promise<void>) | undefined
@@ -237,20 +239,27 @@ export class BrowserUrlReward extends BaseActivity {
             }
             if (surface === 'dashboard') {
                 await this.navigator.openDashboard(page)
-                return await this.navigator.findDashboardCard(page, target)
+                const match = await this.navigator.findDashboardCard(page, target)
+                if (match) return match
+                const localized = this.localizedTargetFromSnapshot(target)
+                return localized ? await this.navigator.findDashboardCard(page, localized) : null
             }
             await this.navigator.openEarn(page)
             let ambiguousTarget: ActivitySkipError | undefined
-            try {
-                const control = await this.navigator.findEarnCard(page, target, scope)
+            const localized = this.localizedTargetFromSnapshot(target)
+            for (const candidate of localized ? [target, localized] : [target]) {
+                try {
+                    const control = await this.navigator.findEarnCard(page, candidate, scope)
+                    if (control) return control
+                } catch (error) {
+                    if (!(error instanceof ActivitySkipError) || error.reason !== 'ambiguous-target') throw error
+                    ambiguousTarget = error
+                }
+                const control = await this.navigator.findOfferControl(page, candidate)
                 if (control) return control
-            } catch (error) {
-                if (!(error instanceof ActivitySkipError) || error.reason !== 'ambiguous-target') throw error
-                ambiguousTarget = error
             }
-            const control = await this.navigator.findOfferControl(page, target)
-            if (!control && ambiguousTarget) throw ambiguousTarget
-            return control
+            if (ambiguousTarget) throw ambiguousTarget
+            return null
         } catch (error) {
             this.bot.signal.throwIfAborted()
             if (isTerminalHttpError(error) || error instanceof ActivitySkipError) throw error
@@ -260,6 +269,19 @@ export class BrowserUrlReward extends BaseActivity {
                 `Rendered ${surface} lookup unavailable | offerId=${target.offerId ?? 'unknown'} | ${error instanceof Error ? error.message : String(error)}`
             )
             return null
+        }
+    }
+
+    private localizedTargetFromSnapshot(target: RewardTarget): RewardTarget | null {
+        if (!target.offerId || target.offerId.startsWith('card:')) return null
+        const offer = this.bot.reactSnapshot?.offers.find(item => item.offerId === target.offerId)
+        if (!offer) return null
+        if (offer.title === target.title && offer.destination === target.destination) return null
+        return {
+            offerId: target.offerId,
+            title: offer.title || target.title,
+            description: offer.description || target.description,
+            destination: offer.destination || target.destination
         }
     }
 

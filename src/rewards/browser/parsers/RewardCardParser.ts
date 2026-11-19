@@ -27,9 +27,13 @@ export function normalizeCardText(value: string | null | undefined): string {
         .trim()
 }
 
-export function rewardUrlIdentity(raw: string | undefined, base: string): { offerIds: string[]; tokens: string[] } {
+export function rewardUrlIdentity(
+    raw: string | undefined,
+    base: string
+): { offerIds: string[]; tokens: string[]; stableKeys: string[] } {
     const offerIds = new Set<string>()
     const tokens = new Set<string>()
+    const stableKeys = new Set<string>()
     const pending = raw ? [raw.replace(/&amp;/gi, '&')] : []
     const visited = new Set<string>()
     const decode = (value: string): string => {
@@ -63,6 +67,13 @@ export function rewardUrlIdentity(raw: string | undefined, base: string): { offe
                         /\b(?:BTDSUOID|BTROID|offer_?id)\s*:\s*(?:"([^"]+)"|'([^']+)'|([^\s"']+))/gi
                     ))
                         offerIds.add(match[1] ?? match[2] ?? match[3]!)
+                    for (const match of filters.matchAll(
+                        /\b(sid|WQOskey)\s*:\s*(?:"([^"]+)"|'([^']+)'|([^\s"']+))/gi
+                    )) {
+                        const filterName = match[1]!.toLowerCase()
+                        const filterValue = (match[2] ?? match[3] ?? match[4] ?? '').trim().toLowerCase()
+                        if (filterValue) stableKeys.add(`${filterName}:${filterValue}`)
+                    }
                     const decoded = decode(filters)
                     if (decoded === filters) break
                     filters = decoded
@@ -86,7 +97,7 @@ export function rewardUrlIdentity(raw: string | undefined, base: string): { offe
             }
         }
     }
-    return { offerIds: [...offerIds], tokens: [...tokens] }
+    return { offerIds: [...offerIds], tokens: [...tokens], stableKeys: [...stableKeys] }
 }
 
 export interface RenderedRewardCard {

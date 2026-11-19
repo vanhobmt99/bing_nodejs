@@ -113,7 +113,9 @@ export class BrowserEarnTasks extends BaseActivity {
                         level: snapshot.account.level,
                         counters: applyEarnSearchQuota(account.dashboard.userStatus.counters, snapshot.searchQuota)
                     },
-                    dailySetPromotions: { [today]: daily },
+                    // Microsoft moved #dailyset from /earn to /dashboard on newer layouts; keep seeded daily set items
+                    // when /earn renders no #dailyset cards so /earn-pass sweeps can still retry them on /dashboard.
+                    dailySetPromotions: daily.length ? { [today]: daily } : account.dashboard.dailySetPromotions,
                     morePromotions: more,
                     morePromotionsWithoutPromotionalItems: [],
                     promotionalItem: null,

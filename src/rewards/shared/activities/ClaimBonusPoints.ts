@@ -1,11 +1,13 @@
 import { pointDelta, pointValue } from '../PointAccounting'
-import type { Page } from 'patchright'
+import type { Locator, Page, Request } from 'patchright'
 import { randomUUID } from 'node:crypto'
 import { BrowserTaskPage } from '../../../browser/BrowserTaskPage'
+import { ghostClick } from '../../../browser/GhostClick'
+import { browserTimeout } from '../../../browser/BrowserTiming'
 import { URLs } from '../../../constants/urls'
 import { buildCookieHeader } from '../../../network/CookieUtils'
 import { localeRequestHeaders } from '../../../network/RequestHeaders'
-import { activityResult, activityFailure, type ActivityResult } from '../ActivityResult'
+import { ActivitySkipError, activityResult, activityFailure, type ActivityResult } from '../ActivityResult'
 import { BaseActivity } from './BaseActivity'
 import { ServerActions } from '../http/ServerActions'
 
@@ -48,15 +50,36 @@ export class ClaimBonusPoints extends BaseActivity {
             const backgroundActive = this.bot.accountState.backgroundRewardsActive
             const server = new ServerActions(this.bot)
             let response: { status: number; acknowledged: boolean; availablePoints: number | null } | undefined
+            let shouldTryUiFallback = false
             try {
                 response = await server.reportClaimAllPoints(before.html, page)
+                if (!response.acknowledged || response.status < 200 || response.status >= 300) {
+                    shouldTryUiFallback = true
+                }
             } catch (error) {
                 this.bot.signal.throwIfAborted()
+                if (error instanceof ActivitySkipError && error.reason === 'action-id-unavailable') {
+                    shouldTryUiFallback = true
+                }
                 this.bot.logger.warn(
                     this.bot.isMobile,
                     'CLAIM-BONUS-POINTS',
-                    `Claim submission uncertain; verifying without resubmitting | ${String(error)}`
+                    `Claim submission uncertain; ${shouldTryUiFallback && page && !page.isClosed() ? 'falling back to dashboard UI' : 'verifying without resubmitting'} | ${String(error)}`
                 )
+            }
+
+            let uiFallbackUsed = false
+            if (shouldTryUiFallback && page && !page.isClosed()) {
+                try {
+                    uiFallbackUsed = await this.claimViaDashboardUi(page)
+                } catch (error) {
+                    this.bot.signal.throwIfAborted()
+                    this.bot.logger.warn(
+                        this.bot.isMobile,
+                        'CLAIM-BONUS-POINTS',
+                        `Dashboard UI claim fallback failed | ${error instanceof Error ? error.message : String(error)}`
+                    )
+                }
             }
 
             let after: typeof before | undefined
@@ -140,6 +163,7 @@ export class ClaimBonusPoints extends BaseActivity {
             const message =
                 `${confirmed ? 'Completed ClaimBonusPoints' : 'Nothing claimed'}` +
                 ` | status=${response?.status ?? 'unknown'} | acknowledged=${response?.acknowledged ?? false}` +
+                `${uiFallbackUsed ? ' | uiFallback=true' : ''}` +
                 ` | claimableBefore=${before.claimable ?? 'unknown'} | claimableAfter=${after?.claimable ?? 'unknown'}` +
                 ` | previousBalance=${oldBalance} | currentBalance=${newBalance}` +
                 ` | balanceDelta=${balanceDelta ?? 'unknown'} | verification=${confirmedByState ? 'claim-state' : confirmedByBalance ? 'balance' : 'unconfirmed'}` +
@@ -167,6 +191,108 @@ export class ClaimBonusPoints extends BaseActivity {
             return activityFailure(error)
         } finally {
             await task?.close()
+        }
+    }
+
+    private async claimViaDashboardUi(page: Page): Promise<boolean> {
+        if (page.isClosed()) return false
+        if (page.url().split(/[?#]/)[0] !== URLs.rewards.dashboard) {
+            await page.goto(URLs.rewards.dashboard, {
+                waitUntil: 'domcontentloaded',
+                timeout: browserTimeout(this.bot, 'navigation')
+            })
+        }
+        await this.bot.browser.utils.dismissMessages(page).catch(() => undefined)
+
+        const trigger = page
+            .locator('main button, main [role="button"]')
+            .filter({ hasText: /ready to claim/i })
+            .first()
+        const visible = await trigger
+            .waitFor({ state: 'visible', timeout: Math.min(browserTimeout(this.bot, 'optional'), 5000) })
+            .then(() => true)
+            .catch(() => false)
+        if (!visible) return false
+
+        const triggerDisabled = await trigger
+            .evaluate(el => Boolean(el.closest('[disabled], [aria-disabled="true"], [data-disabled], [inert]')))
+            .catch(() => true)
+        if (triggerDisabled) return false
+
+        const context = page.context()
+        const nextActionReports: Promise<void>[] = []
+        let actionTimeout: ReturnType<typeof setTimeout> | undefined
+        const observeNextAction = (request: Request): void => {
+            if (request.method() !== 'POST') return
+            try {
+                const url = new URL(request.url())
+                if (url.origin !== URLs.rewards.origin) return
+                if (!request.headers()['next-action']) return
+                nextActionReports.push(
+                    request
+                        .response()
+                        .then(async response => {
+                            await response?.text().catch(() => undefined)
+                        })
+                        .catch(() => undefined)
+                )
+            } catch {
+                // Ignore
+            }
+        }
+        context.on('request', observeNextAction)
+        try {
+            await ghostClick(page, trigger, browserTimeout(this.bot), this.bot.signal, { scroll: 'direct' })
+            this.bot.logger.debug(this.bot.isMobile, 'CLAIM-BONUS-POINTS', 'Clicked dashboard "Ready to claim" button')
+
+            const dialog = page.locator('[role="dialog"]').first()
+            const dialogOpened = await dialog
+                .waitFor({ state: 'visible', timeout: Math.min(browserTimeout(this.bot, 'optional'), 3000) })
+                .then(() => true)
+                .catch(() => false)
+            if (dialogOpened) {
+                const buttons = page.locator('[role="dialog"] button, [role="dialog"] [role="button"]')
+                const count = await buttons.count().catch(() => 0)
+                const matches: Locator[] = []
+                for (let index = 0; index < count; index++) {
+                    const button = buttons.nth(index)
+                    if (!(await button.isVisible().catch(() => false))) continue
+                    const meta = await button
+                        .evaluate(el => ({
+                            disabled: Boolean(
+                                el.closest('[disabled], [aria-disabled="true"], [data-disabled], [inert]')
+                            ),
+                            label: (el.getAttribute('aria-label') ?? el.textContent ?? '').replace(/\s+/g, ' ').trim()
+                        }))
+                        .catch(() => null)
+                    if (!meta || meta.disabled) continue
+                    if (/^claim(?:\s+(?:all|points?|now))?$/i.test(meta.label)) {
+                        matches.push(button)
+                    }
+                }
+                if (matches.length === 1) {
+                    await ghostClick(page, matches[0]!, browserTimeout(this.bot), this.bot.signal, { scroll: 'direct' })
+                    this.bot.logger.debug(
+                        this.bot.isMobile,
+                        'CLAIM-BONUS-POINTS',
+                        'Clicked "Claim" button inside dashboard bonus points dialog'
+                    )
+                }
+            }
+
+            await this.bot.utils.wait(500)
+            if (nextActionReports.length) {
+                await Promise.race([
+                    Promise.allSettled(nextActionReports),
+                    new Promise<void>(resolve => {
+                        actionTimeout = setTimeout(resolve, Math.min(browserTimeout(this.bot, 'optional'), 5000))
+                    })
+                ])
+            }
+            return true
+        } finally {
+            context.off('request', observeNextAction)
+            if (actionTimeout) clearTimeout(actionTimeout)
         }
     }
 

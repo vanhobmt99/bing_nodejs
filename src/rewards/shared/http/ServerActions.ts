@@ -52,10 +52,13 @@ export class ServerActions {
 
             this.bot.nextActions = await this.discovery.resolve(page, sources)
 
-            const dashboardRendered = /<section\b[^>]*\bid=["']dailyset["']/i.test(sources.join('\n'))
+            const dashboardRendered =
+                /<section\b[^>]*\bid=["'](?:dailyset|quests|moreactivities|streaks|exploreonbing)["']/i.test(
+                    sources.join('\n')
+                )
             if (!dashboardRendered) {
                 throw new Error(
-                    'Rewards dashboard did not render (no section#dailyset) - likely a login/redirect issue, aborting'
+                    'Rewards dashboard did not render (no Rewards sections found) - likely a login/redirect issue, aborting'
                 )
             }
 
@@ -106,7 +109,11 @@ export class ServerActions {
             await ghostClick(page, page.locator('section[role="dialog"] button[slot="close"]'), 5000, this.bot.signal)
             this.bot.logger.debug(this.bot.isMobile, 'BOOTSTRAP', 'Dismissed welcome dialog')
 
-            await page.waitForSelector('section#dailyset', { timeout: 15000 }).catch(() => undefined)
+            await page
+                .waitForSelector('section#dailyset, section#quests, section#moreactivities, section#streaks', {
+                    timeout: 15000
+                })
+                .catch(() => undefined)
         } catch (error) {
             this.bot.logger.warn(
                 this.bot.isMobile,

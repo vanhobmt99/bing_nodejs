@@ -1,8 +1,9 @@
 import { OfferVerifier, type OfferReport } from '../../shared/OfferVerifier'
 import { ActivitySkipError, activityFailure, activityResult } from '../../shared/ActivityResult'
+import { ghostClick } from '../../../browser/GhostClick'
 import { browserTimeout } from '../../../browser/BrowserTiming'
 import { BrowserTaskPage } from '../../../browser/BrowserTaskPage'
-import type { Locator, Page } from 'patchright'
+import type { Locator, Page, Request } from 'patchright'
 
 import { URLs } from '../../../constants/urls'
 import { BaseActivity } from '../../shared/activities/BaseActivity'
@@ -11,6 +12,7 @@ import { runTaskWithDelay } from '../../shared/TaskPacing'
 import { browserOfferKey, browserTaskPass } from '../BrowserTaskPass'
 import {
     PUNCHCARD_LINKS,
+    correlateQuestStepOfferIds,
     readPunchCardParents,
     readPunchCardPage,
     readPunchCardStepCandidateMeta,
@@ -208,7 +210,8 @@ export class BrowserPunchCards extends BaseActivity {
         )
         const state = await readPunchCardPage(page)
         try {
-            this.bot.pageParser.snapshotQuestPage(await page.content(), parent)
+            const rscChildren = this.bot.pageParser.snapshotQuestPage(await page.content(), parent)
+            state.steps = correlateQuestStepOfferIds(state.steps, rscChildren)
         } catch (error) {
             this.bot.logger.debug(
                 this.bot.isMobile,
@@ -240,7 +243,21 @@ export class BrowserPunchCards extends BaseActivity {
         let state = await this.readQuest(page, parent)
         for (let pass = 0; pass < 30; pass++) {
             const progress = `${state.completed ?? '?'}/${state.total ?? '?'}`
-            if (state.total && state.completed !== null && state.completed >= state.total) {
+            const nextStep = (claimOnly: boolean) =>
+                state.steps.find(step => {
+                    const key = this.stepKey(step)
+                    return (
+                        (!claimOnly || this.isClaimChild(step)) &&
+                        !step.complete &&
+                        !step.disabled &&
+                        !isSkippedOffer(step.offerId, step.destination) &&
+                        !seen.has(key) &&
+                        !this.bot.attemptedPunchcardChildren.has(`${parent.offerId}:${key}`)
+                    )
+                })
+            const allTasksComplete = Boolean(state.total && state.completed !== null && state.completed >= state.total)
+            const pendingClaim = allTasksComplete ? nextStep(true) : undefined
+            if (allTasksComplete && !pendingClaim) {
                 this.bot.logger.info(
                     this.bot.isMobile,
                     'PUNCHCARD-BROWSER',
@@ -248,16 +265,7 @@ export class BrowserPunchCards extends BaseActivity {
                 )
                 return
             }
-            const child = state.steps.find(step => {
-                const key = this.stepKey(step)
-                return (
-                    !step.complete &&
-                    !step.disabled &&
-                    !isSkippedOffer(step.offerId, step.destination) &&
-                    !seen.has(key) &&
-                    !this.bot.attemptedPunchcardChildren.has(`${parent.offerId}:${key}`)
-                )
-            })
+            const child = allTasksComplete ? pendingClaim : nextStep(false)
             if (!child) {
                 this.bot.logger.info(
                     this.bot.isMobile,
@@ -270,8 +278,9 @@ export class BrowserPunchCards extends BaseActivity {
             }
 
             const key = this.stepKey(child)
+            const isClaim = this.isClaimChild(child)
             seen.add(key)
-            if (this.isClaimChild(child) && !this.bot.config.autoClaimPunchcardRewards) {
+            if (isClaim && !this.bot.config.autoClaimPunchcardRewards) {
                 this.bot.logger.info(
                     this.bot.isMobile,
                     'PUNCHCARD-BROWSER',
@@ -308,9 +317,13 @@ export class BrowserPunchCards extends BaseActivity {
                 )
                 continue
             }
+            let clickSucceeded = false
             const confirmed = () =>
                 (before !== null && state.completed !== null && state.completed > before) ||
-                state.steps.some(step => this.stepKey(step) === key && step.complete)
+                state.steps.some(step => this.stepKey(step) === key && step.complete) ||
+                (isClaim &&
+                    clickSucceeded &&
+                    !state.steps.some(step => this.stepKey(step) === key && !step.complete && !step.disabled))
             const result = await runTaskWithDelay(
                 this.bot,
                 async () => {
@@ -319,7 +332,14 @@ export class BrowserPunchCards extends BaseActivity {
                     try {
                         const clicked = await this.navigator.click(page, control, child.offerId ?? undefined)
                         report = clicked.activityReport ?? undefined
-                        await clicked.close()
+                        clickSucceeded = true
+                        try {
+                            if (isClaim && !clicked.openedPopup) {
+                                await this.confirmQuestClaimDialog(clicked.page, child.offerId ?? undefined)
+                            }
+                        } finally {
+                            await clicked.close()
+                        }
                     } catch (error) {
                         this.bot.signal.throwIfAborted()
                         this.bot.logger.warn(
@@ -361,6 +381,78 @@ export class BrowserPunchCards extends BaseActivity {
         )
     }
 
+    private async confirmQuestClaimDialog(page: Page, offerId?: string): Promise<void> {
+        if (page.isClosed()) return
+        try {
+            const url = new URL(page.url())
+            if (url.origin !== URLs.rewards.origin || !url.pathname.startsWith('/earn/quest/')) return
+        } catch {
+            return
+        }
+
+        const dialogButtons = page.locator('[role="dialog"] button, [role="dialog"] [role="button"]')
+        const count = await dialogButtons.count().catch(() => 0)
+        const matches: Locator[] = []
+        for (let index = 0; index < count; index++) {
+            const button = dialogButtons.nth(index)
+            if (!(await button.isVisible().catch(() => false))) continue
+            const meta = await button
+                .evaluate(el => ({
+                    disabled: Boolean(el.closest('[disabled], [aria-disabled="true"], [data-disabled], [inert]')),
+                    label: (el.getAttribute('aria-label') ?? el.textContent ?? '').replace(/\s+/g, ' ').trim()
+                }))
+                .catch(() => null)
+            if (!meta || meta.disabled) continue
+            if (/^(?:claim|confirm|collect)(?:\s+(?:now|points?|reward|all))?$/i.test(meta.label)) {
+                matches.push(button)
+            }
+        }
+        if (matches.length !== 1) return
+
+        const context = page.context()
+        const nextActionReports: Promise<void>[] = []
+        let actionTimeout: ReturnType<typeof setTimeout> | undefined
+        const observeNextAction = (request: Request): void => {
+            if (request.method() !== 'POST') return
+            try {
+                const url = new URL(request.url())
+                if (url.origin !== URLs.rewards.origin) return
+                if (!request.headers()['next-action']) return
+                nextActionReports.push(
+                    request
+                        .response()
+                        .then(async response => {
+                            await response?.text().catch(() => undefined)
+                        })
+                        .catch(() => undefined)
+                )
+            } catch {
+                // Ignore
+            }
+        }
+        context.on('request', observeNextAction)
+        try {
+            await ghostClick(page, matches[0]!, browserTimeout(this.bot), this.bot.signal, { scroll: 'direct' })
+            this.bot.logger.debug(
+                this.bot.isMobile,
+                'PUNCHCARD-BROWSER',
+                `Quest claim dialog confirmed | offerId=${offerId ?? 'unknown'}`
+            )
+            await this.bot.utils.wait(500)
+            if (nextActionReports.length) {
+                await Promise.race([
+                    Promise.allSettled(nextActionReports),
+                    new Promise<void>(resolve => {
+                        actionTimeout = setTimeout(resolve, Math.min(browserTimeout(this.bot, 'optional'), 5000))
+                    })
+                ])
+            }
+        } finally {
+            context.off('request', observeNextAction)
+            if (actionTimeout) clearTimeout(actionTimeout)
+        }
+    }
+
     private async resolveStepControl(page: Page, child: RenderedPunchCardStep): Promise<Locator | null> {
         const candidates = page.locator('main').getByRole(child.role, { name: child.controlName, exact: true })
         const count = await candidates.count()
@@ -382,6 +474,10 @@ export class BrowserPunchCards extends BaseActivity {
     }
 
     private isClaimChild(child: RenderedPunchCardStep): boolean {
-        return /\/redeem(?:\/|\?|$)/i.test(child.destination) || /^(claim|redeem)\b/i.test(child.controlName)
+        return (
+            /\/redeem(?:\/|\?|$)/i.test(child.destination) ||
+            /^(?:claim|redeem|collect)\b/i.test(child.controlName) ||
+            (/\b(?:claim|collect)\b/i.test(child.title) && child.role === 'button')
+        )
     }
 }
